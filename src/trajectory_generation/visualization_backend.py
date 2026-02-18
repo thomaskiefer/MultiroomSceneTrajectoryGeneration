@@ -719,7 +719,7 @@ def main() -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
     if args.image:
-        out = args.output_dir / f"{stem}_viz.png"
+        out = args.output_dir / f"{stem}_visualization.png"
         render_trajectory_image(
             args.geojson, args.trajectory, out, args.scene,
             args.dpi, fps=args.fps,

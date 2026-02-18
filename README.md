@@ -2,11 +2,11 @@
 
 Config-driven multi-room camera trajectory generation and preprocessing.
 
-This repository is a standalone extraction of the trajectory-generation stack so it can be shared and reused independently from HouseLayout3D/GVS code.
+Standalone repository for reusable multi-room scene trajectory generation.
 
 ## Workflow Choice
 - `structural_json` (recommended): portable, shareable workflow from one scene JSON.
-- `houselayout3d_matterport`: project-internal workflow using HouseLayout3D geometry and Matterport `.house` annotations.
+- `houselayout3d_matterport`: dataset adapter using HouseLayout3D geometry and Matterport `.house` annotations.
 
 ## Quick Start
 
@@ -277,14 +277,6 @@ Frame schema remains unchanged.
 - `src/trajectory_generation/api.py`: minimal public programmatic API
 - `src/trajectory_generation/cli.py`: CLI wrapper (`mrstg generate` / `mrstg preprocess`)
 - `src/trajectory_generation/pipeline.py`: workflow dispatch + `register_runner(...)`
-
-## Scope
-
-- Core package: preprocessing adapters + connectivity + trajectory generation + visualization
-- No GVS or Blender integration code
-- Two supported workflows:
-  - `houselayout3d_matterport`
-  - `structural_json`
 
 ## Troubleshooting
 

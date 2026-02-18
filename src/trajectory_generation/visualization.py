@@ -179,7 +179,7 @@ def plot_trajectory_from_artifacts(
             continue
 
         frames = json.loads(frames_path.read_text())
-        out = frames_path.with_name(frames_path.stem + "_viz.png")
+        out = frames_path.with_name(frames_path.stem + "_visualization.png")
 
         plot_trajectory(
             frames=frames,

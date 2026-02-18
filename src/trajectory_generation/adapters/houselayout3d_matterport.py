@@ -361,7 +361,7 @@ def run_houselayout3d_matterport(
                     frames=frames,
                     floor_polygon=getattr(floor_plan, "footprint", None),
                     title=f"Floor {floor_idx} — {len(frames)} frames",
-                    output_path=output_dir / f"{scene}_floor_{floor_idx}_trajectory_viz.png",
+                    output_path=output_dir / f"{scene}_floor_{floor_idx}_trajectory_visualization.png",
                     viz_config=config.walkthrough.viz,
                 )
             except ImportError:

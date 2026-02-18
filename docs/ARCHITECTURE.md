@@ -20,7 +20,7 @@
 - `visualization.py`: static and video visualization
 
 ## Workflows
-- `houselayout3d_matterport`: internal source adapter
+- `houselayout3d_matterport`: dataset-specific source adapter
 - `structural_json`: portable canonical source adapter
 
 ## Preprocess Artifacts
