@@ -1,0 +1,111 @@
+{
+  "schema_version": "scene.schema.v1",
+  "scene": "structural_template",
+  "floors": [
+    {
+      "floor_index": 0,
+      "z": 0.0,
+      "footprint_xy": [
+        [0.0, 0.0], [14.0, 0.0], [14.0, 4.0],
+        [10.0, 4.0], [10.0, 9.0], [0.0, 9.0]
+      ]
+    }
+  ],
+  "rooms": [
+    {
+      "room_id": "R_entry",
+      "floor_index": 0,
+      "semantic": "entryway",
+      "bbox": { "min": [0.0, 0.0, 0.0], "max": [3.2, 4.0, 2.8] },
+      "polygon_xy": [[0.0, 0.0], [3.2, 0.0], [3.2, 4.0], [0.0, 4.0]]
+    },
+    {
+      "room_id": "R_living",
+      "floor_index": 0,
+      "semantic": "living_room",
+      "bbox": { "min": [3.2, 0.0, 0.0], "max": [10.0, 4.0, 2.8] },
+      "polygon_xy": [
+        [3.2, 0.0], [10.0, 0.0], [10.0, 4.0], [3.2, 4.0]
+      ]
+    },
+    {
+      "room_id": "R_kitchen",
+      "floor_index": 0,
+      "semantic": "kitchen",
+      "bbox": { "min": [0.0, 4.0, 0.0], "max": [5.0, 9.0, 2.8] },
+      "polygon_xy": [
+        [0.0, 4.0], [5.0, 4.0], [5.0, 9.0], [0.0, 9.0]
+      ]
+    },
+    {
+      "room_id": "R_bedroom",
+      "floor_index": 0,
+      "semantic": "bedroom",
+      "bbox": { "min": [5.0, 4.0, 0.0], "max": [10.0, 9.0, 2.8] },
+      "polygon_xy": [
+        [5.0, 4.0], [10.0, 4.0], [10.0, 9.0], [5.0, 9.0]
+      ]
+    },
+    {
+      "room_id": "R_bathroom",
+      "floor_index": 0,
+      "semantic": "bathroom",
+      "bbox": { "min": [10.0, 0.0, 0.0], "max": [14.0, 4.0, 2.8] },
+      "polygon_xy": [
+        [10.0, 0.0], [14.0, 0.0], [14.0, 4.0], [10.0, 4.0]
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "room1_id": "R_entry",
+      "room2_id": "R_living",
+      "waypoint_xy": [3.2, 2.0],
+      "normal_xy": [1.0, 0.0]
+    },
+    {
+      "room1_id": "R_living",
+      "room2_id": "R_bathroom",
+      "waypoint_xy": [10.0, 2.0],
+      "normal_xy": [1.0, 0.0]
+    },
+    {
+      "room1_id": "R_entry",
+      "room2_id": "R_kitchen",
+      "waypoint_xy": [1.6, 4.0],
+      "normal_xy": [0.0, 1.0]
+    },
+    {
+      "room1_id": "R_living",
+      "room2_id": "R_bedroom",
+      "waypoint_xy": [7.5, 4.0],
+      "normal_xy": [0.0, 1.0]
+    },
+    {
+      "room1_id": "R_kitchen",
+      "room2_id": "R_bedroom",
+      "waypoint_xy": [5.0, 6.5],
+      "normal_xy": [1.0, 0.0]
+    }
+  ],
+  "openings": [
+    {
+      "opening_id": "D_01",
+      "kind": "door",
+      "bbox": { "min": [3.1, 1.5, 0.0], "max": [3.3, 2.5, 2.2] },
+      "normal_xy": [1.0, 0.0]
+    },
+    {
+      "opening_id": "D_02",
+      "kind": "door",
+      "bbox": { "min": [9.9, 1.5, 0.0], "max": [10.1, 2.5, 2.2] },
+      "normal_xy": [1.0, 0.0]
+    },
+    {
+      "opening_id": "W_01",
+      "kind": "window",
+      "bbox": { "min": [-0.1, 1.0, 0.8], "max": [0.1, 3.0, 2.0] },
+      "normal_xy": [-1.0, 0.0]
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "multiroom-scene-trajectory-generation"
+version = "0.1.0"
+description = "Config-driven multi-room scene trajectory generation with reusable preprocessing/workflow adapters."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Scientific/Engineering :: Image Processing",
+]
+keywords = ["trajectory", "multi-room", "camera-path", "floorplan", "geometry"]
+dependencies = [
+  "numpy",
+]
+
+[project.optional-dependencies]
+geometry = ["shapely"]
+visualization = [
+  "matplotlib",
+  "opencv-python",
+]
+dev = [
+  "ruff",
+  "mypy",
+  "jsonschema",
+]
+full = [
+  "shapely",
+  "matplotlib",
+  "opencv-python",
+  "jsonschema",
+]
+
+[dependency-groups]
+dev = [
+  "ruff",
+  "mypy",
+  "jsonschema",
+]
+
+[project.scripts]
+mrstg = "trajectory_generation.cli:main"
+mrstg-viz = "trajectory_generation.visualization:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["F", "E9"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+check_untyped_defs = false
+warn_unused_ignores = true
+exclude = ["^tests/"]

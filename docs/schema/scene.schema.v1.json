@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/trajectory_generation/scene.schema.v1.json",
+  "title": "scene.schema.v1",
+  "type": "object",
+  "required": ["schema_version", "scene", "floors", "rooms"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "scene.schema.v1"
+    },
+    "scene": {
+      "type": "string",
+      "minLength": 1
+    },
+    "floors": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["floor_index", "z", "footprint_xy"],
+        "properties": {
+          "floor_index": { "type": "integer" },
+          "z": { "type": "number" },
+          "footprint_xy": {
+            "type": "array",
+            "minItems": 3,
+            "items": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": { "type": "number" }
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "rooms": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["room_id", "semantic", "bbox"],
+        "properties": {
+          "room_id": { "type": "string", "minLength": 1 },
+          "floor_index": { "type": "integer" },
+          "semantic": { "type": "string" },
+          "polygon_xy": {
+            "type": "array",
+            "minItems": 3,
+            "items": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": { "type": "number" }
+            }
+          },
+          "bbox": {
+            "type": "object",
+            "required": ["min", "max"],
+            "properties": {
+              "min": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 3,
+                "items": { "type": "number" }
+              },
+              "max": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 3,
+                "items": { "type": "number" }
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "connections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["room1_id", "room2_id"],
+        "properties": {
+          "room1_id": { "type": "string", "minLength": 1 },
+          "room2_id": { "type": "string", "minLength": 1 },
+          "waypoint_xy": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": { "type": "number" }
+          },
+          "normal_xy": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": { "type": "number" }
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "openings": {}
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,643 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              0.0,
+              0.0
+            ],
+            [
+              14.0,
+              0.0
+            ],
+            [
+              14.0,
+              4.0
+            ],
+            [
+              10.0,
+              4.0
+            ],
+            [
+              10.0,
+              9.0
+            ],
+            [
+              0.0,
+              9.0
+            ],
+            [
+              0.0,
+              0.0
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "type": "floor_footprint",
+        "level_index": 0,
+        "mean_height": 0.0
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              0.0,
+              0.0
+            ],
+            [
+              3.2,
+              0.0
+            ],
+            [
+              3.2,
+              4.0
+            ],
+            [
+              0.0,
+              4.0
+            ],
+            [
+              0.0,
+              0.0
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "type": "room",
+        "room_id": "R_entry",
+        "label_semantic": "entryway",
+        "level_index": 0,
+        "bbox_3d_min": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "bbox_3d_max": [
+          3.2,
+          4.0,
+          2.8
+        ],
+        "centroid_3d": [
+          1.6,
+          2.0,
+          1.4
+        ],
+        "trajectory_center_xy": [
+          1.6000000000000003,
+          2.0000000000000004
+        ],
+        "trajectory_center_3d": [
+          1.6000000000000003,
+          2.0000000000000004,
+          1.6
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          1.6000000000000003,
+          2.0000000000000004
+        ]
+      },
+      "properties": {
+        "type": "trajectory_room_center",
+        "room_id": "R_entry",
+        "level_index": 0
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              3.2,
+              0.0
+            ],
+            [
+              10.0,
+              0.0
+            ],
+            [
+              10.0,
+              4.0
+            ],
+            [
+              3.2,
+              4.0
+            ],
+            [
+              3.2,
+              0.0
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "type": "room",
+        "room_id": "R_living",
+        "label_semantic": "living_room",
+        "level_index": 0,
+        "bbox_3d_min": [
+          3.2,
+          0.0,
+          0.0
+        ],
+        "bbox_3d_max": [
+          10.0,
+          4.0,
+          2.8
+        ],
+        "centroid_3d": [
+          6.6,
+          2.0,
+          1.4
+        ],
+        "trajectory_center_xy": [
+          6.6,
+          2.0
+        ],
+        "trajectory_center_3d": [
+          6.6,
+          2.0,
+          1.6
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          6.6,
+          2.0
+        ]
+      },
+      "properties": {
+        "type": "trajectory_room_center",
+        "room_id": "R_living",
+        "level_index": 0
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              0.0,
+              4.0
+            ],
+            [
+              5.0,
+              4.0
+            ],
+            [
+              5.0,
+              9.0
+            ],
+            [
+              0.0,
+              9.0
+            ],
+            [
+              0.0,
+              4.0
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "type": "room",
+        "room_id": "R_kitchen",
+        "label_semantic": "kitchen",
+        "level_index": 0,
+        "bbox_3d_min": [
+          0.0,
+          4.0,
+          0.0
+        ],
+        "bbox_3d_max": [
+          5.0,
+          9.0,
+          2.8
+        ],
+        "centroid_3d": [
+          2.5,
+          6.5,
+          1.4
+        ],
+        "trajectory_center_xy": [
+          2.5,
+          6.5
+        ],
+        "trajectory_center_3d": [
+          2.5,
+          6.5,
+          1.6
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          2.5,
+          6.5
+        ]
+      },
+      "properties": {
+        "type": "trajectory_room_center",
+        "room_id": "R_kitchen",
+        "level_index": 0
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              5.0,
+              4.0
+            ],
+            [
+              10.0,
+              4.0
+            ],
+            [
+              10.0,
+              9.0
+            ],
+            [
+              5.0,
+              9.0
+            ],
+            [
+              5.0,
+              4.0
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "type": "room",
+        "room_id": "R_bedroom",
+        "label_semantic": "bedroom",
+        "level_index": 0,
+        "bbox_3d_min": [
+          5.0,
+          4.0,
+          0.0
+        ],
+        "bbox_3d_max": [
+          10.0,
+          9.0,
+          2.8
+        ],
+        "centroid_3d": [
+          7.5,
+          6.5,
+          1.4
+        ],
+        "trajectory_center_xy": [
+          7.5,
+          6.5
+        ],
+        "trajectory_center_3d": [
+          7.5,
+          6.5,
+          1.6
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          7.5,
+          6.5
+        ]
+      },
+      "properties": {
+        "type": "trajectory_room_center",
+        "room_id": "R_bedroom",
+        "level_index": 0
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              10.0,
+              0.0
+            ],
+            [
+              14.0,
+              0.0
+            ],
+            [
+              14.0,
+              4.0
+            ],
+            [
+              10.0,
+              4.0
+            ],
+            [
+              10.0,
+              0.0
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "type": "room",
+        "room_id": "R_bathroom",
+        "label_semantic": "bathroom",
+        "level_index": 0,
+        "bbox_3d_min": [
+          10.0,
+          0.0,
+          0.0
+        ],
+        "bbox_3d_max": [
+          14.0,
+          4.0,
+          2.8
+        ],
+        "centroid_3d": [
+          12.0,
+          2.0,
+          1.4
+        ],
+        "trajectory_center_xy": [
+          12.0,
+          2.0
+        ],
+        "trajectory_center_3d": [
+          12.0,
+          2.0,
+          1.6
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          12.0,
+          2.0
+        ]
+      },
+      "properties": {
+        "type": "trajectory_room_center",
+        "room_id": "R_bathroom",
+        "level_index": 0
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            1.6000000000000003,
+            2.0000000000000004
+          ],
+          [
+            3.2,
+            2.0
+          ],
+          [
+            6.6,
+            2.0
+          ]
+        ]
+      },
+      "properties": {
+        "type": "room_connection",
+        "room1_id": "R_entry",
+        "room2_id": "R_living",
+        "door_type": "synthetic",
+        "level_index": 0
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          3.2,
+          2.0
+        ]
+      },
+      "properties": {
+        "type": "door_waypoint",
+        "room1_id": "R_entry",
+        "room2_id": "R_living",
+        "door_type": "synthetic",
+        "level_index": 0
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            6.6,
+            2.0
+          ],
+          [
+            10.0,
+            2.0
+          ],
+          [
+            12.0,
+            2.0
+          ]
+        ]
+      },
+      "properties": {
+        "type": "room_connection",
+        "room1_id": "R_living",
+        "room2_id": "R_bathroom",
+        "door_type": "synthetic",
+        "level_index": 0
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          10.0,
+          2.0
+        ]
+      },
+      "properties": {
+        "type": "door_waypoint",
+        "room1_id": "R_living",
+        "room2_id": "R_bathroom",
+        "door_type": "synthetic",
+        "level_index": 0
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            1.6000000000000003,
+            2.0000000000000004
+          ],
+          [
+            1.6,
+            4.0
+          ],
+          [
+            2.5,
+            6.5
+          ]
+        ]
+      },
+      "properties": {
+        "type": "room_connection",
+        "room1_id": "R_entry",
+        "room2_id": "R_kitchen",
+        "door_type": "synthetic",
+        "level_index": 0
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          1.6,
+          4.0
+        ]
+      },
+      "properties": {
+        "type": "door_waypoint",
+        "room1_id": "R_entry",
+        "room2_id": "R_kitchen",
+        "door_type": "synthetic",
+        "level_index": 0
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            6.6,
+            2.0
+          ],
+          [
+            7.5,
+            4.0
+          ],
+          [
+            7.5,
+            6.5
+          ]
+        ]
+      },
+      "properties": {
+        "type": "room_connection",
+        "room1_id": "R_living",
+        "room2_id": "R_bedroom",
+        "door_type": "synthetic",
+        "level_index": 0
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          7.5,
+          4.0
+        ]
+      },
+      "properties": {
+        "type": "door_waypoint",
+        "room1_id": "R_living",
+        "room2_id": "R_bedroom",
+        "door_type": "synthetic",
+        "level_index": 0
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            2.5,
+            6.5
+          ],
+          [
+            5.0,
+            6.5
+          ],
+          [
+            7.5,
+            6.5
+          ]
+        ]
+      },
+      "properties": {
+        "type": "room_connection",
+        "room1_id": "R_kitchen",
+        "room2_id": "R_bedroom",
+        "door_type": "synthetic",
+        "level_index": 0
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          5.0,
+          6.5
+        ]
+      },
+      "properties": {
+        "type": "door_waypoint",
+        "room1_id": "R_kitchen",
+        "room2_id": "R_bedroom",
+        "door_type": "synthetic",
+        "level_index": 0
+      }
+    }
+  ]
+}
