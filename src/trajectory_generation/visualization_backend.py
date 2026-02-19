@@ -74,6 +74,10 @@ _DOOR_COLOR = "#c0392b"
 _DOOR_LW = 2.5
 _WINDOW_COLOR = "#2980b9"
 _WINDOW_LW = 1.5
+_WINDOW_END_TICK_L = 0.22
+_STAIRS_FILL = "#c8b7a6"
+_STAIRS_EDGE = "#8d6e63"
+_STAIRS_LW = 1.6
 
 
 # ---------------------------------------------------------------------------
@@ -81,13 +85,13 @@ _WINDOW_LW = 1.5
 # ---------------------------------------------------------------------------
 
 def _load(p: Path) -> Any:
-    return json.loads(p.read_text())
+    return json.loads(p.read_text(encoding="utf-8"))
 
 
 def _parse_features(gj: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     _MAP = {
         "floor_footprint": "floor", "room": "rooms", "door": "doors",
-        "window": "windows", "room_connection": "connections",
+        "window": "windows", "stairs": "stairs", "room_connection": "connections",
         "door_waypoint": "waypoints", "trajectory_room_center": "trajectory_centers",
     }
     out: dict[str, list[dict[str, Any]]] = {v: [] for v in _MAP.values()}
@@ -234,10 +238,81 @@ def _draw_windows(ax, feats):
     for f in feats["windows"]:
         coords = f["geometry"]["coordinates"]
         if len(coords) >= 2:
-            xs = [c[0] for c in coords]
-            ys = [c[1] for c in coords]
-            ax.plot(xs, ys, color=_WINDOW_COLOR, linewidth=_WINDOW_LW,
-                    alpha=0.6, linestyle=(0, (3, 1.5)), zorder=8)
+            p0 = np.array([float(coords[0][0]), float(coords[0][1])], dtype=float)
+            p1 = np.array([float(coords[-1][0]), float(coords[-1][1])], dtype=float)
+            seg = p1 - p0
+            seg_norm = float(np.linalg.norm(seg))
+            if seg_norm <= 1e-9:
+                continue
+            direction = seg / seg_norm
+            perp = np.array([-direction[1], direction[0]], dtype=float)
+
+            # Main window span (solid), matching HL3D's parallel style baseline.
+            ax.plot(
+                [float(p0[0]), float(p1[0])],
+                [float(p0[1]), float(p1[1])],
+                color=_WINDOW_COLOR,
+                linewidth=_WINDOW_LW * 1.45,
+                alpha=0.78,
+                solid_capstyle="butt",
+                zorder=8,
+            )
+
+            # Two short perpendicular marks at the span ends.
+            half_tick = 0.5 * _WINDOW_END_TICK_L
+            for anchor in (p0, p1):
+                s = anchor - perp * half_tick
+                e = anchor + perp * half_tick
+                ax.plot(
+                    [float(s[0]), float(e[0])],
+                    [float(s[1]), float(e[1])],
+                    color=_WINDOW_COLOR,
+                    linewidth=_WINDOW_LW,
+                    alpha=0.72,
+                    zorder=8,
+                )
+
+
+def _draw_stairs(ax, feats):
+    used_label = False
+    for f in feats["stairs"]:
+        geometry = f.get("geometry", {})
+        geom_type = str(geometry.get("type", ""))
+        coords = geometry.get("coordinates")
+        if geom_type == "Polygon" and isinstance(coords, list) and coords:
+            ring = coords[0]
+            if not isinstance(ring, list) or len(ring) < 3:
+                continue
+            xs = [float(c[0]) for c in ring]
+            ys = [float(c[1]) for c in ring]
+            fill_kwargs = {"color": _STAIRS_FILL, "alpha": 0.30, "zorder": 7, "hatch": "///"}
+            if not used_label:
+                fill_kwargs["label"] = "Stairs"
+            ax.fill(xs, ys, **fill_kwargs)
+            ax.plot(xs, ys, color=_STAIRS_EDGE, linewidth=_STAIRS_LW, alpha=0.95, zorder=8)
+            used_label = True
+        elif geom_type == "LineString" and isinstance(coords, list) and len(coords) >= 2:
+            xs = [float(c[0]) for c in coords]
+            ys = [float(c[1]) for c in coords]
+            line_kwargs = {"color": _STAIRS_EDGE, "linewidth": _STAIRS_LW, "alpha": 0.95, "zorder": 8}
+            if not used_label:
+                line_kwargs["label"] = "Stairs"
+            ax.plot(xs, ys, **line_kwargs)
+            used_label = True
+        elif geom_type == "Point" and isinstance(coords, list) and len(coords) >= 2:
+            marker_kwargs = {
+                "s": 72,
+                "marker": "s",
+                "color": _STAIRS_FILL,
+                "edgecolors": _STAIRS_EDGE,
+                "linewidths": 1.0,
+                "alpha": 0.95,
+                "zorder": 9,
+            }
+            if not used_label:
+                marker_kwargs["label"] = "Stairs"
+            ax.scatter([float(coords[0])], [float(coords[1])], **marker_kwargs)
+            used_label = True
 
 
 def _draw_connections(ax, feats, room_center: dict[str, np.ndarray] | None = None):
@@ -356,11 +431,21 @@ def _draw_trajectory(ax, frames, fps: int = 30):
     """Draw time-colored trajectory using LineCollection."""
     positions = np.array([f["position"][:2] for f in frames])
     n = len(positions)
+    if n == 0:
+        raise ValueError("Trajectory contains no frames.")
 
     pts = positions.reshape(-1, 1, 2)
-    segs = np.concatenate([pts[:-1], pts[1:]], axis=1)
     time_s = np.arange(n) / float(fps)
-    norm = Normalize(vmin=time_s[0], vmax=time_s[-1])
+    if n == 1:
+        norm = Normalize(vmin=0.0, vmax=1.0)
+        lc = LineCollection([], cmap=_TRAJ_CMAP, norm=norm, linewidths=_TRAJ_LW, capstyle="round", zorder=15)
+        lc.set_array(np.array([0.0]))
+        ax.add_collection(lc)
+        return positions, lc, time_s
+
+    segs = np.concatenate([pts[:-1], pts[1:]], axis=1)
+    vmax = float(time_s[-1]) if time_s[-1] > 0.0 else 1.0
+    norm = Normalize(vmin=0.0, vmax=vmax)
 
     lc = LineCollection(segs.tolist(), cmap=_TRAJ_CMAP, norm=norm,
                         linewidths=_TRAJ_LW, capstyle="round", zorder=15)
@@ -456,6 +541,7 @@ def _draw_base(ax, feats, x0, x1, y0, y1):
     room_center = _build_room_center_map(feats)
     _draw_floor(ax, feats)
     _draw_rooms(ax, feats, room_center=room_center)
+    _draw_stairs(ax, feats)
     _draw_connections(ax, feats, room_center=room_center)
     _draw_doors(ax, feats)
     _draw_windows(ax, feats)
@@ -515,8 +601,13 @@ def render_trajectory_video(
     """
     import cv2
 
+    if speed <= 0:
+        raise ValueError("`speed` must be > 0.")
+
     gj = _load(geojson_path)
     frames = _load(trajectory_path)
+    if not frames:
+        raise ValueError("Trajectory contains no frames.")
     feats = _parse_features(gj)
     x0, x1, y0, y1 = _data_bounds(feats, frames)
     positions = np.array([f["position"][:2] for f in frames])
@@ -571,7 +662,7 @@ def render_trajectory_video(
 
     # Pre-compute per-segment colors matching the trajectory colormap
     time_s = np.arange(n_traj) / float(fps)
-    norm = Normalize(vmin=0, vmax=time_s[-1])
+    norm = Normalize(vmin=0, vmax=(time_s[-1] if time_s[-1] > 0 else 1.0))
     seg_colors_rgba = _TRAJ_CMAP(norm(time_s[:n_segs]))
     seg_colors_bgr = (seg_colors_rgba[:, [2, 1, 0]] * 255).astype(np.uint8)
 
@@ -611,7 +702,20 @@ def render_trajectory_video(
         cv2.circle(frame, pos_px, dot_radius, (40, 40, 40), -1, cv2.LINE_AA)
 
         # Direction arrow + FOV cone
-        fwd = np.array(frames[idx]["forward"][:2])
+        forward_raw = frames[idx].get("forward")
+        if isinstance(forward_raw, list) and len(forward_raw) >= 2:
+            fwd = np.array(forward_raw[:2], dtype=float)
+        else:
+            look_at = np.array(frames[idx].get("look_at", frames[idx]["position"])[:2], dtype=float)
+            pos_xy = np.array(frames[idx]["position"][:2], dtype=float)
+            fwd = look_at - pos_xy
+            if np.linalg.norm(fwd) <= 1e-6:
+                if idx > 0:
+                    fwd = positions[idx] - positions[idx - 1]
+                elif n_traj > 1:
+                    fwd = positions[1] - positions[0]
+                else:
+                    fwd = np.array([1.0, 0.0], dtype=float)
         fn = np.linalg.norm(fwd)
         if fn > 1e-6:
             fwd /= fn

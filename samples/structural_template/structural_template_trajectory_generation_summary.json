@@ -6,7 +6,7 @@
     {
       "floor_index": 0,
       "floor_z": 0.0,
-      "num_frames": 2916,
+      "num_frames": 1734,
       "num_rooms": 5,
       "num_connections": 5,
       "output_file": "structural_template_floor_0_trajectory.json"

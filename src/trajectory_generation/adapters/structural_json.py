@@ -21,6 +21,10 @@ from ..artifacts import (
 )
 from ..config import TrajectoryGenerationConfig
 from ..geometry_exceptions import geometry_exceptions
+from ..opening_match import (
+    classify_connection_door_type,
+    extract_door_centers_by_floor,
+)
 from ..room_graph import (
     RectPolygon,
     RoomConnection,
@@ -145,6 +149,7 @@ def _derive_polygon_connection(
         room2_id=room_b.room_id,
         waypoint_xy=waypoint_xy,
         normal_xy=normal_xy,
+        door_type="synthetic",
     )
 
 
@@ -152,6 +157,8 @@ def _build_graph_for_floor(
     floor_rooms: list[_RoomSpec],
     explicit_connections: list[_ConnectionSpec],
     proximity_threshold: float,
+    door_centers: list[np.ndarray] | None = None,
+    door_match_tolerance: float = 0.3,
 ) -> RoomGraph:
     rooms_by_id = {room.room_id: room for room in floor_rooms}
     room_nodes: dict[str, tuple[RoomGraphRoomNode, RoomPolygon]] = {}
@@ -212,6 +219,7 @@ def _build_graph_for_floor(
                             room2_id=room_b.room_id,
                             waypoint_xy=None,
                             normal_xy=None,
+                            door_type="synthetic",
                         )
                     )
 
@@ -239,11 +247,26 @@ def _build_graph_for_floor(
         if conn.normal_xy is not None:
             normal_arr = np.array([conn.normal_xy[0], conn.normal_xy[1]], dtype=float)
 
+        room1_xy = np.array([float(c1[0]), float(c1[1])], dtype=float)
+        room2_xy = np.array([float(c2[0]), float(c2[1])], dtype=float)
+        door_type = classify_connection_door_type(
+            explicit_door_type=conn.door_type,
+            waypoint_xy=waypoint_xy,
+            room1_xy=room1_xy,
+            room2_xy=room2_xy,
+            door_centers=door_centers,
+            distance_threshold=door_match_tolerance,
+        )
+
         connections.append(
             RoomConnection(
                 room1_id=conn.room1_id,
                 room2_id=conn.room2_id,
-                waypoint=RoomGraphWaypoint(position=waypoint_xy, normal=normal_arr),
+                waypoint=RoomGraphWaypoint(
+                    position=waypoint_xy,
+                    normal=normal_arr,
+                    door_type=door_type,
+                ),
             )
         )
         adjacency[conn.room1_id].append(conn.room2_id)
@@ -306,6 +329,7 @@ def run_structural_json(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     scene_payload = parse_structural_scene_file(scene_input_path)
+    raw_scene_payload = json.loads(scene_input_path.read_text())
     scene_name = scene_payload.scene
     floors = scene_payload.floors
     rooms = scene_payload.rooms
@@ -320,6 +344,8 @@ def run_structural_json(
     artifacts.warnings.extend(scene_payload.warnings)
 
     floors_by_idx = {f.floor_index: f for f in floors}
+    floor_levels = sorted((int(f.floor_index), float(f.z)) for f in floors)
+    door_centers_by_floor = extract_door_centers_by_floor(raw_scene_payload, floor_levels)
     rooms_by_floor: dict[int, list[_RoomSpec]] = {f.floor_index: [] for f in floors}
     for room in rooms:
         rooms_by_floor.setdefault(room.floor_index, []).append(room)
@@ -373,6 +399,8 @@ def run_structural_json(
             floor_rooms=floor_rooms,
             explicit_connections=floor_connections,
             proximity_threshold=config.connectivity.proximity_threshold,
+            door_centers=door_centers_by_floor.get(floor_idx),
+            door_match_tolerance=config.connectivity.door_match_tolerance,
         )
         stats = _compute_graph_statistics(
             graph,

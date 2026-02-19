@@ -98,6 +98,42 @@ class _FakeOpeningsModule:
         return {}
 
 
+class _FakeOpeningData:
+    def __init__(self, opening_type: str, opening_id: int):
+        self.opening_type = opening_type
+        self.opening_id = opening_id
+        self.centroid_2d = [1.2 + opening_id, 1.4 + opening_id]
+        self.normal_3d = [1.0, 0.0, 0.0]
+        self.vertices_3d = [
+            [1.0, 1.0, 0.0],
+            [1.4, 1.0, 0.0],
+            [1.4, 1.0, 2.1],
+            [1.0, 1.0, 2.1],
+        ]
+
+
+class _FakeOpeningsModuleWithData:
+    @staticmethod
+    def load_openings(path: Path, opening_type: str):
+        if opening_type == "door":
+            return [_FakeOpeningData("door", 10)]
+        if opening_type == "window":
+            return [_FakeOpeningData("window", 20)]
+        return []
+
+    @staticmethod
+    def match_openings_to_floors(all_openings, floorplans, config, rooms_by_floor):
+        return {0: all_openings}
+
+    @staticmethod
+    def match_walls_to_floors(walls, floorplans):
+        return {0: walls}
+
+    @staticmethod
+    def match_openings_to_walls(openings_by_floor_raw, walls_by_floor, tolerance: float):
+        return {0: [(opening, None) for opening in openings_by_floor_raw.get(0, [])]}
+
+
 class _FakeConnectivityModule:
     @staticmethod
     def build_connectivity_graphs(**kwargs):
@@ -181,6 +217,12 @@ class _FakeExportModule:
                 }
             ],
         }
+
+
+class _FakeGeometryModuleWithStairs(_FakeGeometryModule):
+    @staticmethod
+    def load_stair_height_ranges(dataset_root: Path, scene: str):
+        return [(0.0, 2.5)]
 
 
 def _fake_render_hl3d_debug_plots(
@@ -337,6 +379,7 @@ class PreprocessTest(unittest.TestCase):
                         "room1_id": "R_1",
                         "room2_id": "R_2",
                         "normal_xy": [1.0, 0.0],
+                        "door_type": "actual",
                     },
                 },
             ],
@@ -344,6 +387,7 @@ class PreprocessTest(unittest.TestCase):
         scene = convert_connectivity_geojson_payload(payload, scene_id="demo_scene")
         self.assertEqual(len(scene["connections"]), 1)
         self.assertEqual(scene["connections"][0]["normal_xy"], [1.0, 0.0])
+        self.assertEqual(scene["connections"][0]["door_type"], "actual")
 
     def test_convert_connectivity_geojson_filters_duplicate_and_self_connections(self) -> None:
         payload = {
@@ -408,6 +452,71 @@ class PreprocessTest(unittest.TestCase):
         self.assertEqual(len(scene["connections"]), 1)
         self.assertEqual(scene["connections"][0]["room1_id"], "R_1")
         self.assertEqual(scene["connections"][0]["room2_id"], "R_2")
+
+    def test_convert_connectivity_geojson_extracts_door_window_openings(self) -> None:
+        payload = {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [[[0.0, 0.0], [3.0, 0.0], [3.0, 3.0], [0.0, 3.0], [0.0, 0.0]]],
+                    },
+                    "properties": {"type": "floor_footprint", "level_index": 0, "mean_height": 0.0},
+                },
+                {
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [[[0.2, 0.2], [1.0, 0.2], [1.0, 1.0], [0.2, 1.0], [0.2, 0.2]]],
+                    },
+                    "properties": {
+                        "type": "room",
+                        "room_id": "R_1",
+                        "label_semantic": "entryway",
+                        "level_index": 0,
+                        "bbox_3d_min": [0.2, 0.2, 0.0],
+                        "bbox_3d_max": [1.0, 1.0, 2.5],
+                    },
+                },
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "LineString", "coordinates": [[1.1, 0.5], [1.3, 0.5]]},
+                    "properties": {
+                        "type": "door",
+                        "opening_id": 7,
+                        "level_index": 0,
+                        "z_min": 0.0,
+                        "z_max": 2.0,
+                        "normal_xy": [1.0, 0.0],
+                    },
+                },
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "LineString", "coordinates": [[0.6, 1.0], [0.9, 1.0]]},
+                    "properties": {
+                        "type": "window",
+                        "opening_id": 8,
+                        "level_index": 0,
+                        "z_min": 1.0,
+                        "z_max": 1.8,
+                    },
+                },
+            ],
+        }
+
+        scene = convert_connectivity_geojson_payload(payload, scene_id="demo_scene")
+        self.assertIn("openings", scene)
+        self.assertEqual(len(scene["openings"]), 2)
+        door = next(item for item in scene["openings"] if item["opening_type"] == "door")
+        self.assertEqual(door["floor_index"], 0)
+        self.assertEqual(door["opening_id"], 7)
+        self.assertEqual(door["normal_xy"], [1.0, 0.0])
+        self.assertAlmostEqual(door["waypoint_xy"][0], 1.2)
+        self.assertAlmostEqual(door["waypoint_xy"][1], 0.5)
+        self.assertIn("bbox", door)
+        self.assertEqual(door["segment_xy"], [[1.1, 0.5], [1.3, 0.5]])
 
     def test_build_hl3d_geojson_and_convert_to_structural(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -491,6 +600,66 @@ class PreprocessTest(unittest.TestCase):
             ]
             self.assertEqual(len(center_features), 1)
             self.assertEqual(center_features[0]["properties"]["room_id"], "R_1")
+
+    def test_preprocess_structural_json_includes_openings_and_stairs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            scene = "scene_abc"
+            (root / "tools" / "floorplan").mkdir(parents=True)
+            dataset_root = root / "dataset"
+            (dataset_root / "structures" / "layouts_split_by_entity" / scene).mkdir(parents=True)
+            (dataset_root / "house_segmentations" / scene).mkdir(parents=True)
+            (dataset_root / "house_segmentations" / scene / f"{scene}.house").write_text("R")
+            (dataset_root / "doors").mkdir(parents=True)
+            (dataset_root / "windows").mkdir(parents=True)
+            (dataset_root / "doors" / f"{scene}.json").write_text("{}")
+            (dataset_root / "windows" / f"{scene}.json").write_text("{}")
+
+            config = TrajectoryGenerationConfig.houselayout3d_matterport(
+                dataset_root=dataset_root,
+                scene=scene,
+            )
+
+            geojson_out = root / "out" / f"{scene}_connectivity.geojson"
+            structural_out = root / "out" / f"{scene}_structural_scene.json"
+
+            fake_ports = type(
+                "Ports",
+                (),
+                {
+                    "connectivity": _FakeConnectivityModule,
+                    "geometry": _FakeGeometryModuleWithStairs,
+                    "openings": _FakeOpeningsModuleWithData,
+                    "rooms": _FakeRoomsModule,
+                    "floorplan_config_factory": _FakeFloorplanConfig,
+                    "walkthrough_factory": object,
+                },
+            )()
+
+            with patch(
+                "trajectory_generation.adapters.houselayout3d_matterport._load_floorplan_modules",
+                return_value=fake_ports,
+            ), patch(
+                "trajectory_generation.hl3d_preprocess._load_floorplan_export_module",
+                return_value=_FakeExportModule,
+            ), patch(
+                "trajectory_generation.hl3d_preprocess._compute_center_map_by_floor",
+                return_value={0: {"R_1": [1.25, 1.25, 1.6]}},
+            ):
+                preprocess_hl3d_matterport_to_structural_json(
+                    config=config,
+                    structural_output_path=structural_out,
+                    geojson_output_path=geojson_out,
+                    project_root=root,
+                )
+
+            converted = json.loads(structural_out.read_text())
+            self.assertIn("openings", converted)
+            self.assertEqual(len(converted["openings"]), 2)
+            self.assertIn("stairs", converted)
+            self.assertEqual(converted["stairs"][0]["z_min"], 0.0)
+            self.assertEqual(converted["stairs"][0]["z_max"], 2.5)
+            self.assertEqual(converted["stairs"][0]["from_floor_index"], 0)
 
     def test_export_hl3d_debug_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

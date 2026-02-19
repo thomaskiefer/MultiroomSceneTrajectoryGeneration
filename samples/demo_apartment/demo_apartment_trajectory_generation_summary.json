@@ -6,7 +6,7 @@
     {
       "floor_index": 0,
       "floor_z": 0.0,
-      "num_frames": 2315,
+      "num_frames": 1345,
       "num_rooms": 6,
       "num_connections": 6,
       "output_file": "demo_apartment_floor_0_trajectory.json"

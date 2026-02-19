@@ -12,6 +12,9 @@ SUPPORTED_WORKFLOWS = ("houselayout3d_matterport", "structural_json")
 SUPPORTED_LOOK_AT_MODES = ("tangent", "spline_target")
 SUPPORTED_DISCONNECTED_TRANSITION_MODES = ("bridge", "jump")
 SUPPORTED_DISCONNECTED_COMPONENT_POLICIES = ("largest_component_only", "all_components")
+SUPPORTED_NEIGHBOR_PRIORITY_MODES = ("lexicographic", "human_like")
+SUPPORTED_REVISIT_TRANSITION_MODES = ("center_arc", "door_shortcut")
+SUPPORTED_LOOP_CLOSURE_MODES = ("auto", "enabled", "disabled")
 
 
 def _path_or_none(value: Optional[str | Path]) -> Optional[Path]:
@@ -86,8 +89,8 @@ class WalkthroughBehaviorConfig:
     spin_points: int = 12  # orbit samples for a full 360-degree room spin.
     spin_look_radius: float = 2.0  # [m] look-target radius around room center.
     spin_orbit_scale: float = 0.10  # [-] camera orbit radius scale relative to look radius.
-    spin_segment_speed: float = 0.5  # [m/s] target speed along spin segments.
-    travel_speed: float = 0.5  # [m/s] target speed for room-to-room travel.
+    spin_segment_speed: float = 0.8  # [m/s] target speed along spin segments.
+    travel_speed: float = 0.8  # [m/s] target speed for room-to-room travel.
     door_buffer: float = 0.4  # [m] approach/depart offset from doorway waypoint.
     lookahead_inside_next_room: float = 1.5  # [m] look-ahead depth after crossing door.
     max_linear_speed: float = 1.2  # [m/s] hard speed cap applied after spline resampling.
@@ -100,7 +103,22 @@ class WalkthroughBehaviorConfig:
     look_at_mode: str = "tangent"  # tangent | spline_target.
     disconnected_transition_mode: str = "bridge"  # bridge | jump.
     disconnected_component_policy: str = "largest_component_only"  # largest_component_only | all_components.
-    passthrough_speed: float = 0.5  # [m/s] speed for partial arcs on revisited rooms.
+    neighbor_priority_mode: str = "human_like"  # lexicographic | human_like.
+    revisit_transition_mode: str = "center_arc"  # center_arc | door_shortcut.
+    loop_closure_mode: str = "auto"  # auto | enabled | disabled.
+    prefer_outer_revisit_arc: bool = True  # prefer long arc on revisits for smoother room-perimeter coverage.
+    revisit_arc_angle_search_deg: float = 30.0  # [deg] +/- search window around nominal entry/exit angles.
+    revisit_arc_search_steps: int = 7  # number of offset samples per angle in search window.
+    revisit_arc_length_weight: float = 0.0  # deprecated/no-op (kept for config compatibility).
+    revisit_arc_outer_bias: float = 0.0  # deprecated/no-op (kept for config compatibility).
+    revisit_arc_max_span_deg: float = 360.0  # deprecated/no-op (kept for config compatibility).
+    revisit_arc_max_tangent_mismatch_deg: float = 85.0  # [deg] per-end tangent mismatch gate for arc candidates.
+    revisit_arc_reverse_pref_deg: float = 155.0  # [deg] reversal threshold where long arcs are preferred.
+    revisit_arc_reverse_long_arc_bonus: float = 0.35  # [rad] score bias favoring long arcs in reversal regime.
+    revisit_arc_transition_risk_distance_weight: float = 0.35  # [-] weight on normalized exit-to-target distance.
+    revisit_arc_transition_risk_angle_weight: float = 0.50  # [-] weight on end-tangent vs exit-target direction.
+    passthrough_speed: float = 0.8  # [m/s] speed for partial arcs on revisited rooms.
+    passthrough_min_turn_deg: float = 18.0  # [deg] minimum revisit-arc turn to avoid sharp direction kinks.
     start_room_priority: list[str] = field(
         default_factory=lambda: ["entryway", "living_room", "kitchen"]
     )
@@ -121,6 +139,21 @@ class WalkthroughBehaviorConfig:
             self.disconnected_component_policy,
             SUPPORTED_DISCONNECTED_COMPONENT_POLICIES,
         )
+        _validate_choice(
+            "neighbor_priority_mode",
+            self.neighbor_priority_mode,
+            SUPPORTED_NEIGHBOR_PRIORITY_MODES,
+        )
+        _validate_choice(
+            "revisit_transition_mode",
+            self.revisit_transition_mode,
+            SUPPORTED_REVISIT_TRANSITION_MODES,
+        )
+        _validate_choice(
+            "loop_closure_mode",
+            self.loop_closure_mode,
+            SUPPORTED_LOOP_CLOSURE_MODES,
+        )
         if self.spin_points < 2:
             raise ValueError("`spin_points` must be >= 2.")
         if self.spin_look_radius <= 0:
@@ -137,6 +170,28 @@ class WalkthroughBehaviorConfig:
             raise ValueError("`spin_segment_speed` must be > 0.")
         if self.passthrough_speed <= 0:
             raise ValueError("`passthrough_speed` must be > 0.")
+        if self.revisit_arc_angle_search_deg < 0 or self.revisit_arc_angle_search_deg >= 180:
+            raise ValueError("`revisit_arc_angle_search_deg` must be in [0, 180).")
+        if self.revisit_arc_search_steps < 1:
+            raise ValueError("`revisit_arc_search_steps` must be >= 1.")
+        if self.revisit_arc_length_weight < 0:
+            raise ValueError("`revisit_arc_length_weight` must be >= 0.")
+        if self.revisit_arc_outer_bias < 0:
+            raise ValueError("`revisit_arc_outer_bias` must be >= 0.")
+        if self.revisit_arc_max_span_deg <= 0 or self.revisit_arc_max_span_deg > 360:
+            raise ValueError("`revisit_arc_max_span_deg` must be in (0, 360].")
+        if self.revisit_arc_max_tangent_mismatch_deg <= 0 or self.revisit_arc_max_tangent_mismatch_deg >= 180:
+            raise ValueError("`revisit_arc_max_tangent_mismatch_deg` must be in (0, 180).")
+        if self.revisit_arc_reverse_pref_deg < 0 or self.revisit_arc_reverse_pref_deg >= 180:
+            raise ValueError("`revisit_arc_reverse_pref_deg` must be in [0, 180).")
+        if self.revisit_arc_reverse_long_arc_bonus < 0:
+            raise ValueError("`revisit_arc_reverse_long_arc_bonus` must be >= 0.")
+        if self.revisit_arc_transition_risk_distance_weight < 0:
+            raise ValueError("`revisit_arc_transition_risk_distance_weight` must be >= 0.")
+        if self.revisit_arc_transition_risk_angle_weight < 0:
+            raise ValueError("`revisit_arc_transition_risk_angle_weight` must be >= 0.")
+        if self.passthrough_min_turn_deg < 0 or self.passthrough_min_turn_deg >= 180:
+            raise ValueError("`passthrough_min_turn_deg` must be in [0, 180).")
         if self.dense_samples_per_meter <= 0:
             raise ValueError("`dense_samples_per_meter` must be > 0.")
         if self.dense_samples_base < 2:
@@ -258,15 +313,35 @@ class TrajectoryGenerationConfig:
 
     def to_json(self, output_path: Path) -> None:
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(json.dumps(self.to_dict(), indent=2))
+        output_path.write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "TrajectoryGenerationConfig":
+        if not isinstance(payload, dict):
+            raise ValueError("Invalid config payload: expected a JSON object at top-level.")
+        if "dataset" not in payload:
+            raise ValueError("Missing required top-level field `dataset`.")
         dataset_raw = payload["dataset"]
+        if not isinstance(dataset_raw, dict):
+            raise ValueError("Invalid `dataset`: expected an object.")
         floorplan_raw = payload.get("floorplan", {})
         connectivity_raw = payload.get("connectivity", {})
-        walkthrough_raw = dict(payload.get("walkthrough", {}))
+        walkthrough_value = payload.get("walkthrough", {})
+        if not isinstance(walkthrough_value, dict):
+            raise ValueError("Invalid `walkthrough`: expected an object.")
+        walkthrough_raw = dict(walkthrough_value)
         workflow = payload.get("workflow", "houselayout3d_matterport")
+
+        allowed_dataset_keys = {
+            "dataset_root",
+            "scene",
+            "house_segmentation_dir",
+            "scene_input_json",
+        }
+        unknown_dataset_keys = set(dataset_raw.keys()) - allowed_dataset_keys
+        if unknown_dataset_keys:
+            unknown_str = ", ".join(sorted(unknown_dataset_keys))
+            raise ValueError(f"Unknown keys in `dataset`: {unknown_str}.")
 
         dataset = DatasetConfig(
             dataset_root=Path(dataset_raw.get("dataset_root", ".")),
@@ -274,19 +349,38 @@ class TrajectoryGenerationConfig:
             house_segmentation_dir=_path_or_none(dataset_raw.get("house_segmentation_dir")),
             scene_input_json=_path_or_none(dataset_raw.get("scene_input_json")),
         )
-        floorplan = FloorplanPipelineConfig(**floorplan_raw)
-        connectivity = ConnectivityConfig(**connectivity_raw)
+        if not isinstance(floorplan_raw, dict):
+            raise ValueError("Invalid `floorplan`: expected an object.")
+        if not isinstance(connectivity_raw, dict):
+            raise ValueError("Invalid `connectivity`: expected an object.")
+        try:
+            floorplan = FloorplanPipelineConfig(**floorplan_raw)
+        except TypeError as exc:
+            raise ValueError(f"Invalid `floorplan` config keys: {exc}") from exc
+        try:
+            connectivity = ConnectivityConfig(**connectivity_raw)
+        except TypeError as exc:
+            raise ValueError(f"Invalid `connectivity` config keys: {exc}") from exc
         behavior_raw = dict(walkthrough_raw.pop("behavior", {}))
         viz_raw = dict(walkthrough_raw.pop("viz", {}))
         # Backward compatibility with earlier config payloads.
         walkthrough_raw.pop("output_format", None)
         if behavior_raw:
-            walkthrough_raw["behavior"] = WalkthroughBehaviorConfig(**behavior_raw)
+            try:
+                walkthrough_raw["behavior"] = WalkthroughBehaviorConfig(**behavior_raw)
+            except TypeError as exc:
+                raise ValueError(f"Invalid `walkthrough.behavior` config keys: {exc}") from exc
         if viz_raw:
-            walkthrough_raw["viz"] = TrajectoryVisualizationConfig(**viz_raw)
+            try:
+                walkthrough_raw["viz"] = TrajectoryVisualizationConfig(**viz_raw)
+            except TypeError as exc:
+                raise ValueError(f"Invalid `walkthrough.viz` config keys: {exc}") from exc
         if "output_dir" in walkthrough_raw:
             walkthrough_raw["output_dir"] = Path(walkthrough_raw["output_dir"])
-        walkthrough = WalkthroughConfig(**walkthrough_raw)
+        try:
+            walkthrough = WalkthroughConfig(**walkthrough_raw)
+        except TypeError as exc:
+            raise ValueError(f"Invalid `walkthrough` config keys: {exc}") from exc
         return cls(
             dataset=dataset,
             floorplan=floorplan,
@@ -297,5 +391,5 @@ class TrajectoryGenerationConfig:
 
     @classmethod
     def from_json(cls, input_path: Path) -> "TrajectoryGenerationConfig":
-        payload = json.loads(input_path.read_text())
+        payload = json.loads(input_path.read_text(encoding="utf-8"))
         return cls.from_dict(payload)

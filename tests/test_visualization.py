@@ -17,6 +17,12 @@ except ImportError:
     _HAS_MATPLOTLIB = False
 
 try:
+    import cv2  # noqa: F401
+    _HAS_CV2 = True
+except ImportError:
+    _HAS_CV2 = False
+
+try:
     from shapely.geometry import Polygon as ShapelyPolygon
     _HAS_SHAPELY = True
 except ImportError:
@@ -125,6 +131,87 @@ class PlotTrajectoryFromArtifactsTest(unittest.TestCase):
             paths = plot_trajectory_from_artifacts(artifacts)
             self.assertEqual(len(paths), 1)
             self.assertTrue(paths[0].exists())
+
+
+@unittest.skipUnless(_HAS_MATPLOTLIB, "matplotlib required")
+class RichVisualizationBackendTest(unittest.TestCase):
+    def _write_minimal_inputs(self, root: Path, frames: list[dict]) -> tuple[Path, Path]:
+        import json
+
+        geojson_path = root / "layout.geojson"
+        geojson_path.write_text(json.dumps({"type": "FeatureCollection", "features": []}))
+        trajectory_path = root / "traj.json"
+        trajectory_path.write_text(json.dumps(frames))
+        return geojson_path, trajectory_path
+
+    def test_render_trajectory_image_with_single_frame(self) -> None:
+        from trajectory_generation.visualization import render_trajectory_image
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            frames = [
+                {
+                    "id": 0,
+                    "position": [0.0, 0.0, 1.6],
+                    "look_at": [1.0, 0.0, 1.6],
+                    "forward": [1.0, 0.0, 0.0],
+                    "up": [0.0, 0.0, 1.0],
+                    "fov": 60.0,
+                }
+            ]
+            geojson_path, trajectory_path = self._write_minimal_inputs(tmp, frames)
+            out = tmp / "single_frame.png"
+            render_trajectory_image(geojson_path, trajectory_path, out, scene_name="single")
+            self.assertTrue(out.exists())
+            self.assertGreater(out.stat().st_size, 0)
+
+    @unittest.skipUnless(_HAS_CV2, "opencv required")
+    def test_render_trajectory_video_without_forward_key(self) -> None:
+        from trajectory_generation.visualization import render_trajectory_video
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            frames = [
+                {
+                    "id": 0,
+                    "position": [0.0, 0.0, 1.6],
+                    "look_at": [1.0, 0.0, 1.6],
+                    "up": [0.0, 0.0, 1.0],
+                    "fov": 60.0,
+                },
+                {
+                    "id": 1,
+                    "position": [0.5, 0.0, 1.6],
+                    "look_at": [1.5, 0.0, 1.6],
+                    "up": [0.0, 0.0, 1.0],
+                    "fov": 60.0,
+                },
+            ]
+            geojson_path, trajectory_path = self._write_minimal_inputs(tmp, frames)
+            out = tmp / "video.mp4"
+            render_trajectory_video(geojson_path, trajectory_path, out, scene_name="video", speed=1.0, fps=5)
+            self.assertTrue(out.exists())
+            self.assertGreater(out.stat().st_size, 0)
+
+    @unittest.skipUnless(_HAS_CV2, "opencv required")
+    def test_render_trajectory_video_rejects_non_positive_speed(self) -> None:
+        from trajectory_generation.visualization import render_trajectory_video
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            frames = [
+                {
+                    "id": 0,
+                    "position": [0.0, 0.0, 1.6],
+                    "look_at": [1.0, 0.0, 1.6],
+                    "forward": [1.0, 0.0, 0.0],
+                    "up": [0.0, 0.0, 1.0],
+                    "fov": 60.0,
+                }
+            ]
+            geojson_path, trajectory_path = self._write_minimal_inputs(tmp, frames)
+            with self.assertRaises(ValueError):
+                render_trajectory_video(geojson_path, trajectory_path, tmp / "bad.mp4", speed=0.0)
 
 
 if __name__ == "__main__":

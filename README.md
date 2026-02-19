@@ -76,6 +76,14 @@ mrstg \
 mrstg --validate-schema --scene-input-json examples/structural/demo_apartment.json
 ```
 
+### 2a) Minimal single-script flow (generate + visualize)
+
+```bash
+uv run python scripts/minimal_generate_and_visualize.py \
+  --scene-input-json examples/structural/demo_apartment.json \
+  --output-dir outputs/minimal_demo
+```
+
 ### 2b) Convert a floorplan connectivity GeoJSON into structural JSON
 
 ```bash
@@ -86,7 +94,7 @@ python scripts/convert_connectivity_geojson_to_structural_json.py \
 ```
 
 Repository includes a real converted sample:
-- `examples/structural/matterport_2t7WUuJeko7.json`
+- `examples/structural/2t7WUuJeko7.json`
 
 ### 2c) Convert neutral structural primitives into structural JSON
 
@@ -134,6 +142,8 @@ mrstg preprocess \
 python scripts/preprocess_hl3d_matterport_to_structural_json.py ...
 ```
 
+The generated structural JSON includes `openings[]` (doors/windows) when available and `stairs[]` from Matterport stair ranges.
+
 ### 2e) Trajectory visualization (image + video)
 
 For quick validation without dataset preprocessing, first generate the bundled sample artifacts:
@@ -142,9 +152,9 @@ For quick validation without dataset preprocessing, first generate the bundled s
 uv run python scripts/regenerate_samples.py
 
 uv run mrstg-viz \
-  --geojson samples/matterport_2t7WUuJeko7/matterport_2t7WUuJeko7_connectivity.geojson \
-  --trajectory samples/matterport_2t7WUuJeko7/matterport_2t7WUuJeko7_floor_0_trajectory.json \
-  --output-dir samples/matterport_2t7WUuJeko7/visualizations \
+  --geojson samples/2t7WUuJeko7/2t7WUuJeko7_connectivity.geojson \
+  --trajectory samples/2t7WUuJeko7/2t7WUuJeko7_floor_0_trajectory.json \
+  --output-dir samples/2t7WUuJeko7/visualizations \
   --fps 30 \
   --speed 1.0 \
   --image
@@ -169,7 +179,7 @@ uv run python scripts/regenerate_samples.py
 
 Outputs are written to:
 - `samples/demo_apartment/`
-- `samples/matterport_2t7WUuJeko7/`
+- `samples/2t7WUuJeko7/`
 - `samples/structural_template/`
 
 Debug connectivity legend semantics:
@@ -220,7 +230,8 @@ Optional keys:
   - `room1_id`, `room2_id`
   - optional `waypoint_xy`: `[x, y]`
   - optional `normal_xy`: `[nx, ny]`
-- `openings`: passthrough (unused by first version)
+- `openings`: optional door/window metadata (`opening_type`, optional `waypoint_xy`/`bbox`, optional `normal_xy`)
+- `stairs`: optional stair metadata (`z_min`, `z_max`, optional nearest floor indices)
 
 Note: `rooms[].polygon_xy` requires `shapely` (`pip install -e ".[geometry]"`).
 If `schema_version` is omitted, parser assumes `scene.schema.v1` and emits a warning.
@@ -271,6 +282,7 @@ Frame schema remains unchanged.
 - `src/trajectory_generation/preprocess.py`: compatibility import layer
 - `src/trajectory_generation/hl3d_preprocess.py`: dataset-specific HL3D/Matterport preprocessing
 - `src/trajectory_generation/geojson_converter.py`: GeoJSON -> structural JSON conversion helpers
+- `src/trajectory_generation/scene_geojson.py`: structural JSON -> visualization GeoJSON helper
 - `src/trajectory_generation/validation.py`: post-generation frame validation checks
 - `src/trajectory_generation/debug_visualization.py`: modular debug floorplan renderer
 - `src/trajectory_generation/artifacts.py`: shared output artifacts + writers
@@ -317,3 +329,4 @@ conda run -n houselayout3d python -m unittest discover -s tests -p 'test_*.py' -
 Runtime benchmark helper:
 - `scripts/benchmark_structural_json.py`
 - `scripts/regenerate_samples.py`
+- `scripts/minimal_generate_and_visualize.py`

@@ -153,6 +153,54 @@ class TraversalTest(unittest.TestCase):
         )
         self.assertEqual(seq, ["A", "B", "A"])
 
+    def test_human_like_neighbor_priority_prefers_shorter_distance(self) -> None:
+        adjacency = {
+            "A": ["B", "C"],
+            "B": ["A"],
+            "C": ["A"],
+        }
+        centers = {
+            "A": (0.0, 0.0),
+            "B": (9.0, 0.0),
+            "C": (1.0, 0.0),
+        }
+        seq = plan_room_sequence(
+            start_room_id="A",
+            all_room_ids=adjacency.keys(),
+            adjacency=adjacency,
+            room_center_xy=lambda rid: centers[rid],
+            neighbor_priority_mode="human_like",
+        )
+        self.assertEqual(seq, ["A", "C", "A", "B", "A"])
+
+    def test_human_like_neighbor_priority_prefers_observed_passage(self) -> None:
+        adjacency = {
+            "A": ["B", "C"],
+            "B": ["A"],
+            "C": ["A"],
+        }
+        centers = {
+            "A": (0.0, 0.0),
+            "B": (1.0, 1.0),
+            "C": (1.0, -1.0),
+        }
+
+        def _connection_kind(a: str, b: str) -> str:
+            pair = frozenset((a, b))
+            if pair == frozenset(("A", "C")):
+                return "observed"
+            return "inferred"
+
+        seq = plan_room_sequence(
+            start_room_id="A",
+            all_room_ids=adjacency.keys(),
+            adjacency=adjacency,
+            room_center_xy=lambda rid: centers[rid],
+            neighbor_priority_mode="human_like",
+            connection_kind=_connection_kind,
+        )
+        self.assertEqual(seq, ["A", "C", "A", "B", "A"])
+
 
 if __name__ == "__main__":
     unittest.main()

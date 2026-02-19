@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import logging
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 import numpy as np
 
@@ -46,6 +46,7 @@ class ControlPointPlanner:
         self,
         path_sequence: list[str],
         transition_mode: str,
+        suppress_terminal_revisit_motion: bool = False,
     ) -> ControlPointSequence:
         """Build control points from room visit sequence."""
         control_points_pos: list[np.ndarray] = []
@@ -55,31 +56,56 @@ class ControlPointPlanner:
         seen_rooms: set[str] = set()
         for i, room_id in enumerate(path_sequence):
             center_pos = self._get_room_center(room_id)
+            consumed_next_transition = False
 
             is_first_visit = room_id not in seen_rooms
             seen_rooms.add(room_id)
 
-            if is_first_visit:
+            is_terminal_revisit = (not is_first_visit) and (i == len(path_sequence) - 1)
+            if is_terminal_revisit and suppress_terminal_revisit_motion:
+                # For loop-closure runs, avoid adding an extra end-of-sequence
+                # revisit arc in the final room; closure logic will bring the
+                # path to start pose from the returned doorway point.
+                pass
+            elif is_first_visit:
+                preferred_departure_angle = self._get_departure_angle(
+                    seq_idx=i,
+                    room_id=room_id,
+                    center_pos=center_pos,
+                    path_sequence=path_sequence,
+                )
                 self._add_spin_points(
                     center_pos,
                     control_points_pos,
                     control_points_look,
                     segment_speeds,
+                    preferred_departure_angle=preferred_departure_angle,
                 )
             else:
-                self._add_passthrough_arc(
-                    i,
-                    room_id,
-                    center_pos,
-                    path_sequence,
-                    control_points_pos,
-                    control_points_look,
-                    segment_speeds,
-                )
+                if self.behavior.revisit_transition_mode == "door_shortcut":
+                    consumed_next_transition = self._add_passthrough_door_shortcut(
+                        i,
+                        room_id,
+                        center_pos,
+                        path_sequence,
+                        control_points_pos,
+                        control_points_look,
+                        segment_speeds,
+                    )
+                if not consumed_next_transition:
+                    self._add_passthrough_arc(
+                        i,
+                        room_id,
+                        center_pos,
+                        path_sequence,
+                        control_points_pos,
+                        control_points_look,
+                        segment_speeds,
+                    )
 
             if i < len(path_sequence) - 1:
                 next_room_id = path_sequence[i + 1]
-                if next_room_id != room_id:
+                if next_room_id != room_id and not consumed_next_transition:
                     conn = self._get_connection(room_id, next_room_id)
                     if conn:
                         self._add_door_crossing(
@@ -214,15 +240,36 @@ class ControlPointPlanner:
         cp_pos: list,
         cp_look: list,
         seg_speeds: list,
+        preferred_departure_angle: Optional[float] = None,
     ) -> None:
-        num_spin_points = self.behavior.spin_points
+        num_spin_points = int(self.behavior.spin_points)
+        if num_spin_points < 2:
+            logger.warning(
+                "Invalid spin_points=%s; clamping to 2 to avoid degenerate spin orbit.",
+                num_spin_points,
+            )
+            num_spin_points = 2
         radius = self.behavior.spin_look_radius
 
+        # Angle parameter controls look-target phase; camera position is opposite.
+        # Prefer aligning spin start/end camera position with departure direction
+        # toward the next transition target. This keeps room-orbit exits consistent
+        # with downstream door/room crossings.
         start_angle = 0.0
-        if len(cp_pos) > 0:
+        if preferred_departure_angle is not None:
+            start_angle = float(preferred_departure_angle - np.pi)
+        elif len(cp_pos) > 0:
             incoming_vec = center_pos[:2] - np.array(cp_pos[-1][:2], dtype=float)
             if np.linalg.norm(incoming_vec) > 1e-6:
                 start_angle = float(np.arctan2(incoming_vec[1], incoming_vec[0]))
+
+        spin_sign = self._choose_spin_direction(
+            start_angle=start_angle,
+            previous_pos=(np.asarray(cp_pos[-1], dtype=float) if len(cp_pos) > 0 else None),
+            spin_center=center_pos,
+            preferred_departure_angle=preferred_departure_angle,
+            orbit_radius=radius * self.behavior.spin_orbit_scale,
+        )
 
         dx0 = radius * np.cos(start_angle)
         dy0 = radius * np.sin(start_angle)
@@ -242,7 +289,7 @@ class ControlPointPlanner:
                 seg_speeds.append(self.behavior.travel_speed)
 
         for k in range(num_spin_points + 1):
-            angle_rad = start_angle + k * (2 * np.pi / num_spin_points)
+            angle_rad = start_angle + spin_sign * k * (2 * np.pi / num_spin_points)
             dx = radius * np.cos(angle_rad)
             dy = radius * np.sin(angle_rad)
             look_target = center_pos + np.array([dx, dy, 0])
@@ -265,6 +312,7 @@ class ControlPointPlanner:
     ) -> None:
         radius = self.behavior.spin_look_radius
         orbit_scale = self.behavior.spin_orbit_scale
+        orbit_radius = radius * orbit_scale
 
         entry_angle = 0.0
         if len(cp_pos) > 0:
@@ -272,8 +320,12 @@ class ControlPointPlanner:
             if np.linalg.norm(incoming) > 1e-6:
                 entry_angle = float(np.arctan2(incoming[1], incoming[0]))
 
-        exit_angle = entry_angle + np.pi
+        # Angles here parameterize LOOK direction. Camera position is opposite.
+        # To exit on the side of the next transition target, we therefore shift
+        # look-angle by +pi relative to the target direction.
+        exit_angle = entry_angle
         exit_vec = None
+        transition_target_xy: Optional[np.ndarray] = None
         if seq_idx < len(path_sequence) - 1:
             next_room_id = path_sequence[seq_idx + 1]
             if next_room_id != room_id:
@@ -281,26 +333,46 @@ class ControlPointPlanner:
                 if conn:
                     door_xy = conn.waypoint.position
                     exit_vec = np.array([door_xy[0], door_xy[1]], dtype=float) - center_pos[:2]
+                    transition_target_xy = np.array([door_xy[0], door_xy[1]], dtype=float)
                 else:
                     next_center = self._get_room_center(next_room_id)
                     exit_vec = next_center[:2] - center_pos[:2]
+                    transition_target_xy = np.array(next_center[:2], dtype=float)
                 if exit_vec is not None and np.linalg.norm(exit_vec) > 1e-6:
-                    exit_angle = float(np.arctan2(exit_vec[1], exit_vec[0]))
+                    target_angle = float(np.arctan2(exit_vec[1], exit_vec[0]))
+                    exit_angle = target_angle + np.pi
 
         delta = float((exit_angle - entry_angle + np.pi) % (2 * np.pi) - np.pi)
-        if abs(delta) < np.deg2rad(30):
-            # Deterministic tie-break for near-collinear entry/exit directions.
-            delta = np.deg2rad(90)
+        if self.behavior.revisit_transition_mode == "center_arc":
+            entry_angle, delta = self._optimize_revisit_arc_segment(
+                entry_angle_nominal=entry_angle,
+                exit_angle_nominal=exit_angle,
+                center_xy=np.array(center_pos[:2], dtype=float),
+                orbit_radius=orbit_radius,
+                previous_pos_xy=(np.asarray(cp_pos[-1][:2], dtype=float) if len(cp_pos) > 0 else None),
+                transition_target_xy=transition_target_xy,
+            )
+        abs_delta = abs(delta)
+        min_turn_rad = np.deg2rad(self.behavior.passthrough_min_turn_deg)
+        if abs_delta < min_turn_rad:
+            # Keep a compact easing arc for tiny heading changes instead of an abrupt kink.
+            turn_sign = 1.0 if delta >= 0.0 else -1.0
+            delta = turn_sign * min_turn_rad
+            abs_delta = min_turn_rad
 
-        num_arc_points = max(3, int(abs(delta) / (2 * np.pi) * self.behavior.spin_points))
+        # Reuse the same nominal orbit radius as first-visit spins so revisit
+        # arcs stay on the same room-centered trajectory family.
+        radius_eff = radius
+
+        num_arc_points = max(3, int(np.ceil(abs_delta / (2 * np.pi) * self.behavior.spin_points)))
         angles = np.linspace(entry_angle, entry_angle + delta, num_arc_points + 1)
 
         if len(cp_pos) > 0:
             seg_speeds.append(self.behavior.travel_speed)
 
         for k, angle in enumerate(angles):
-            dx = radius * np.cos(angle)
-            dy = radius * np.sin(angle)
+            dx = radius_eff * np.cos(angle)
+            dy = radius_eff * np.sin(angle)
             look_target = center_pos + np.array([dx, dy, 0.0])
             orbit_offset = np.array([-dx, -dy, 0.0]) * orbit_scale
             cam_pos = center_pos + orbit_offset
@@ -368,11 +440,36 @@ class ControlPointPlanner:
             look_dist = max(self.behavior.door_buffer, 0.25)
             look_target = door_pos + flow_dir * look_dist
 
+        # Keep door progression monotonic along flow direction to avoid
+        # "passed the door, then went back" artifacts in shortcut/revisit paths.
+        last_progress = float("-inf")
         if len(cp_pos) > 0:
-            seg_speeds.append(self.behavior.travel_speed)  # previous -> approach
-        cp_pos.extend([p_approach, door_pos, p_depart])
-        cp_look.extend([door_pos, look_target, look_target])
-        seg_speeds.extend([self.behavior.travel_speed, self.behavior.travel_speed])
+            last_pos = np.asarray(cp_pos[-1], dtype=float)
+            last_progress = float(np.dot((last_pos - door_pos)[:2], flow_dir[:2]))
+
+        candidates = [
+            (-self.behavior.door_buffer, p_approach, door_pos),
+            (0.0, door_pos, look_target),
+            (self.behavior.door_buffer, p_depart, look_target),
+        ]
+        added = False
+        for progress, point, look in candidates:
+            # Skip any point that would move backwards along the crossing axis.
+            if progress <= last_progress + 1e-4:
+                continue
+            if len(cp_pos) > 0:
+                seg_speeds.append(self.behavior.travel_speed)
+            cp_pos.append(point)
+            cp_look.append(look)
+            last_progress = progress
+            added = True
+
+        # Safety fallback: ensure at least departure gets inserted.
+        if not added:
+            if len(cp_pos) > 0:
+                seg_speeds.append(self.behavior.travel_speed)
+            cp_pos.append(p_depart)
+            cp_look.append(look_target)
 
     def _add_component_transfer(
         self,
@@ -423,3 +520,336 @@ class ControlPointPlanner:
                 "control_point_indices": [start_cp_idx, end_cp_idx],
             }
         )
+
+    def _add_passthrough_door_shortcut(
+        self,
+        seq_idx: int,
+        room_id: str,
+        center_pos: np.ndarray,
+        path_sequence: list[str],
+        cp_pos: list,
+        cp_look: list,
+        seg_speeds: list,
+    ) -> bool:
+        """Route revisit transitions through observed room doors instead of center arcs."""
+        if seq_idx <= 0 or seq_idx >= len(path_sequence) - 1:
+            return False
+
+        prev_room_id = path_sequence[seq_idx - 1]
+        next_room_id = path_sequence[seq_idx + 1]
+        if prev_room_id == room_id or next_room_id == room_id:
+            return False
+
+        conn_in = self._get_connection(prev_room_id, room_id)
+        conn_out = self._get_connection(room_id, next_room_id)
+        if conn_in is None or conn_out is None:
+            return False
+
+        in_xy = conn_in.waypoint.position
+        out_xy = conn_out.waypoint.position
+        in_pos = np.array([in_xy[0], in_xy[1], self.eye_level], dtype=float)
+        out_pos = np.array([out_xy[0], out_xy[1], self.eye_level], dtype=float)
+
+        transit_vec = out_pos - in_pos
+        transit_vec[2] = 0.0
+        transit_norm = float(np.linalg.norm(transit_vec))
+        if transit_norm > 1e-6:
+            transit_dir = transit_vec / transit_norm
+        else:
+            fallback = center_pos - in_pos
+            fallback[2] = 0.0
+            fallback_norm = float(np.linalg.norm(fallback))
+            transit_dir = fallback / fallback_norm if fallback_norm > 1e-6 else np.array([1.0, 0.0, 0.0])
+
+        if len(cp_pos) > 0:
+            last = np.asarray(cp_pos[-1], dtype=float)
+            dist_last_in = float(np.linalg.norm(last - in_pos))
+            # Progress along in->out axis. Positive means we are already past
+            # the incoming door waypoint toward the outgoing door.
+            progress_last = float(np.dot((last - in_pos)[:2], transit_dir[:2]))
+            should_insert_in = dist_last_in > 0.08 and progress_last < -0.05
+            if should_insert_in:
+                cp_pos.append(in_pos)
+                cp_look.append(in_pos + transit_dir)
+                seg_speeds.append(self.behavior.travel_speed)
+        else:
+            cp_pos.append(in_pos)
+            cp_look.append(in_pos + transit_dir)
+
+        # Intentionally avoid inserting an explicit midpoint between doors.
+        # Keeping this transition direct reduces artificial oscillation.
+
+        # Reuse canonical door-crossing logic for the outgoing transition to next room.
+        self._add_door_crossing(
+            conn_out,
+            center_pos,
+            next_room_id,
+            cp_pos,
+            cp_look,
+            seg_speeds,
+        )
+        return True
+
+    def _get_departure_angle(
+        self,
+        seq_idx: int,
+        room_id: str,
+        center_pos: np.ndarray,
+        path_sequence: list[str],
+    ) -> Optional[float]:
+        """Return angle from current room center toward the next transition target."""
+        if seq_idx >= len(path_sequence) - 1:
+            return None
+        next_room_id = path_sequence[seq_idx + 1]
+        if next_room_id == room_id:
+            return None
+
+        conn = self._get_connection(room_id, next_room_id)
+        if conn is not None:
+            door_xy = conn.waypoint.position
+            vec = np.array([door_xy[0], door_xy[1]], dtype=float) - center_pos[:2]
+        else:
+            next_center = self._get_room_center(next_room_id)
+            vec = next_center[:2] - center_pos[:2]
+
+        if np.linalg.norm(vec) <= 1e-6:
+            return None
+        return float(np.arctan2(vec[1], vec[0]))
+
+    def _choose_spin_direction(
+        self,
+        start_angle: float,
+        previous_pos: Optional[np.ndarray],
+        spin_center: np.ndarray,
+        preferred_departure_angle: Optional[float],
+        orbit_radius: float,
+    ) -> float:
+        """Choose CW/CCW direction that better matches incoming/outgoing motion."""
+        if orbit_radius <= 1e-9:
+            return 1.0
+
+        spin0 = spin_center + np.array(
+            [
+                orbit_radius * np.cos(start_angle + np.pi),
+                orbit_radius * np.sin(start_angle + np.pi),
+                0.0,
+            ],
+            dtype=float,
+        )
+
+        incoming_dir = None
+        if previous_pos is not None:
+            vec = spin0[:2] - previous_pos[:2]
+            norm = float(np.linalg.norm(vec))
+            if norm > 1e-6:
+                incoming_dir = vec / norm
+
+        outgoing_dir = None
+        if preferred_departure_angle is not None:
+            outgoing_dir = np.array(
+                [np.cos(preferred_departure_angle), np.sin(preferred_departure_angle)],
+                dtype=float,
+            )
+
+        def _angle_cost(a: np.ndarray, b: np.ndarray) -> float:
+            dot = float(np.clip(np.dot(a, b), -1.0, 1.0))
+            return float(np.arccos(dot))
+
+        def _score(sign: float) -> float:
+            tangent = np.array(
+                [sign * np.sin(start_angle), -sign * np.cos(start_angle)],
+                dtype=float,
+            )
+            tangent_norm = float(np.linalg.norm(tangent))
+            if tangent_norm > 1e-9:
+                tangent /= tangent_norm
+            score = 0.0
+            if incoming_dir is not None:
+                score += _angle_cost(tangent, incoming_dir)
+            if outgoing_dir is not None:
+                score += _angle_cost(tangent, outgoing_dir)
+            return score
+
+        ccw = _score(1.0)
+        cw = _score(-1.0)
+        return -1.0 if cw < ccw else 1.0
+
+    @staticmethod
+    def _normalize_dir(vec: np.ndarray) -> Optional[np.ndarray]:
+        norm = float(np.linalg.norm(vec))
+        if norm <= 1e-9:
+            return None
+        return vec / norm
+
+    @staticmethod
+    def _angle_cost(a: np.ndarray, b: np.ndarray) -> float:
+        dot = float(np.clip(np.dot(a, b), -1.0, 1.0))
+        return float(np.arccos(dot))
+
+    def _optimize_revisit_arc_segment(
+        self,
+        entry_angle_nominal: float,
+        exit_angle_nominal: float,
+        center_xy: np.ndarray,
+        orbit_radius: float,
+        previous_pos_xy: Optional[np.ndarray],
+        transition_target_xy: Optional[np.ndarray],
+    ) -> tuple[float, float]:
+        """
+        Optimize revisit arc segment by searching entry/exit angle offsets and
+        selecting the best arc (short/long) by entry/exit tangent smoothness and
+        transition-risk terms.
+        """
+        if orbit_radius <= 1e-9:
+            delta = float((exit_angle_nominal - entry_angle_nominal + np.pi) % (2 * np.pi) - np.pi)
+            return float(entry_angle_nominal), delta
+
+        search_half = np.deg2rad(float(self.behavior.revisit_arc_angle_search_deg))
+        steps = int(self.behavior.revisit_arc_search_steps)
+        if search_half <= 1e-12 or steps <= 1:
+            offsets = np.array([0.0], dtype=float)
+        else:
+            offsets = np.linspace(-search_half, search_half, steps)
+
+        mismatch_max = np.deg2rad(float(self.behavior.revisit_arc_max_tangent_mismatch_deg))
+        reverse_pref = np.deg2rad(float(self.behavior.revisit_arc_reverse_pref_deg))
+        reverse_long_bonus = float(self.behavior.revisit_arc_reverse_long_arc_bonus)
+        risk_distance_weight = float(self.behavior.revisit_arc_transition_risk_distance_weight)
+        risk_angle_weight = float(self.behavior.revisit_arc_transition_risk_angle_weight)
+
+        best_entry = float(entry_angle_nominal)
+        best_delta = float((exit_angle_nominal - entry_angle_nominal + np.pi) % (2 * np.pi) - np.pi)
+        best_score = float("inf")
+        found_valid = False
+
+        # Determine if this transition is a near-reversal at nominal geometry.
+        reverse_regime = False
+        reversal_strength = 0.0
+        if previous_pos_xy is not None and transition_target_xy is not None:
+            entry_cam_nom = center_xy + orbit_radius * np.array(
+                [-np.cos(entry_angle_nominal), -np.sin(entry_angle_nominal)],
+                dtype=float,
+            )
+            exit_cam_nom = center_xy + orbit_radius * np.array(
+                [-np.cos(exit_angle_nominal), -np.sin(exit_angle_nominal)],
+                dtype=float,
+            )
+            incoming_nom = self._normalize_dir(entry_cam_nom - previous_pos_xy)
+            outgoing_nom = self._normalize_dir(transition_target_xy - exit_cam_nom)
+            if incoming_nom is not None and outgoing_nom is not None:
+                reversal_angle = self._angle_cost(incoming_nom, outgoing_nom)
+                reverse_regime = reversal_angle >= reverse_pref
+                if reverse_regime:
+                    denom = max(np.pi - reverse_pref, 1e-6)
+                    reversal_strength = float(np.clip((reversal_angle - reverse_pref) / denom, 0.0, 1.0))
+
+        def _search_candidates() -> None:
+            nonlocal best_entry, best_delta, best_score, found_valid
+            for d_entry in offsets:
+                entry_angle = float(entry_angle_nominal + d_entry)
+                entry_cam = center_xy + orbit_radius * np.array(
+                    [-np.cos(entry_angle), -np.sin(entry_angle)],
+                    dtype=float,
+                )
+                incoming_dir = None
+                if previous_pos_xy is not None:
+                    incoming_dir = self._normalize_dir(entry_cam - previous_pos_xy)
+
+                for d_exit in offsets:
+                    exit_angle = float(exit_angle_nominal + d_exit)
+                    delta_short = float((exit_angle - entry_angle + np.pi) % (2.0 * np.pi) - np.pi)
+                    if abs(delta_short) < 1e-6:
+                        # Keep a true short/zero candidate when entry and exit
+                        # are aligned; otherwise the optimizer would force a
+                        # full ±2pi loop at room revisits near sequence end.
+                        short_candidates: list[float] = [0.0]
+                        long_candidates = [2.0 * np.pi, -2.0 * np.pi]
+                    else:
+                        short_candidates = [delta_short]
+                        long_candidates = [float(delta_short - np.sign(delta_short) * (2.0 * np.pi))]
+
+                    candidate_deltas: list[float] = []
+                    candidate_deltas.extend(long_candidates)
+                    candidate_deltas.extend(short_candidates)
+                    if not candidate_deltas:
+                        continue
+
+                    exit_cam = center_xy + orbit_radius * np.array(
+                        [-np.cos(exit_angle), -np.sin(exit_angle)],
+                        dtype=float,
+                    )
+                    outgoing_dir = None
+                    normalized_exit_distance = 0.0
+                    if transition_target_xy is not None:
+                        exit_vec = transition_target_xy - exit_cam
+                        outgoing_dir = self._normalize_dir(exit_vec)
+                        room_scale = max(
+                            float(np.linalg.norm(transition_target_xy - center_xy)),
+                            float(self.behavior.spin_look_radius),
+                            1e-3,
+                        )
+                        normalized_exit_distance = float(np.linalg.norm(exit_vec) / room_scale)
+
+                    for delta in candidate_deltas:
+                        is_long_arc = abs(delta) > (np.pi + 1e-6)
+                        sign = 1.0 if delta >= 0.0 else -1.0
+                        start_tangent = np.array(
+                            [sign * np.sin(entry_angle), -sign * np.cos(entry_angle)],
+                            dtype=float,
+                        )
+                        start_tangent = self._normalize_dir(start_tangent)
+                        if start_tangent is None:
+                            continue
+
+                        end_angle = entry_angle + delta
+                        end_tangent = np.array(
+                            [sign * np.sin(end_angle), -sign * np.cos(end_angle)],
+                            dtype=float,
+                        )
+                        end_tangent = self._normalize_dir(end_tangent)
+                        if end_tangent is None:
+                            continue
+
+                        mismatch_in = 0.0
+                        if incoming_dir is not None:
+                            mismatch_in = self._angle_cost(start_tangent, incoming_dir)
+
+                        mismatch_out = 0.0
+                        if outgoing_dir is not None:
+                            mismatch_out = self._angle_cost(end_tangent, outgoing_dir)
+
+                        valid = mismatch_in <= mismatch_max and mismatch_out <= mismatch_max
+                        score = mismatch_in + mismatch_out
+                        score += risk_distance_weight * normalized_exit_distance
+                        score += risk_angle_weight * mismatch_out
+                        if reverse_regime and reverse_long_bonus > 0.0:
+                            arc_bias = reverse_long_bonus * (1.0 + reversal_strength)
+                            if is_long_arc:
+                                score -= arc_bias
+                            else:
+                                score += arc_bias
+
+                        if valid:
+                            found_valid = True
+                        elif found_valid:
+                            continue
+                        else:
+                            score += 2.0
+
+                        # Deterministic tie-break only.
+                        tie_break = abs(float(d_entry)) + abs(float(d_exit)) + 1e-3 * abs(delta)
+                        best_tie = (
+                            abs(float(best_entry - entry_angle_nominal))
+                            + abs(float((best_entry + best_delta) - exit_angle_nominal))
+                            + 1e-3 * abs(best_delta)
+                        )
+                        if (score + 1e-12) < best_score or (
+                            abs(score - best_score) <= 1e-12 and tie_break < best_tie
+                        ):
+                            best_score = score
+                            best_entry = entry_angle
+                            best_delta = float(delta)
+
+        _search_candidates()
+
+        return best_entry, best_delta

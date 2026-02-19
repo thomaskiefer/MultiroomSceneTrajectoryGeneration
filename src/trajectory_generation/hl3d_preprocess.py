@@ -28,6 +28,7 @@ class Hl3dPreprocessContext:
     rooms_by_floor: dict[int, list[Any]]
     openings_by_floor: dict[int, list[Any]] | None
     connectivity_graphs: dict[int, Any]
+    stair_height_ranges: tuple[tuple[float, float], ...] = ()
     unmatched_room_ids: tuple[str, ...] = ()
     unmatched_opening_ids: tuple[str, ...] = ()
     matched_to_floor_not_wall_opening_ids: tuple[str, ...] = ()
@@ -206,6 +207,25 @@ def _build_hl3d_matterport_context(
     if not connectivity_graphs:
         raise RuntimeError("Connectivity graph generation produced no graphs.")
 
+    stair_height_ranges: list[tuple[float, float]] = []
+    for idx, stair_range in enumerate(stair_ranges):
+        if not isinstance(stair_range, (list, tuple)) or len(stair_range) != 2:
+            logger.warning("Ignoring stair range %d with invalid format: %r", idx, stair_range)
+            continue
+        try:
+            z0 = float(stair_range[0])
+            z1 = float(stair_range[1])
+        except (TypeError, ValueError):
+            logger.warning("Ignoring stair range %d with non-numeric values: %r", idx, stair_range)
+            continue
+        if not (np.isfinite(z0) and np.isfinite(z1)):
+            logger.warning("Ignoring stair range %d with non-finite values: %r", idx, stair_range)
+            continue
+        if z0 <= z1:
+            stair_height_ranges.append((z0, z1))
+        else:
+            stair_height_ranges.append((z1, z0))
+
     return (
         Hl3dPreprocessContext(
             scene=scene,
@@ -213,6 +233,7 @@ def _build_hl3d_matterport_context(
             rooms_by_floor=rooms_by_floor,
             openings_by_floor=openings_by_floor or None,
             connectivity_graphs=connectivity_graphs,
+            stair_height_ranges=tuple(stair_height_ranges),
             unmatched_room_ids=unmatched_room_ids,
             unmatched_opening_ids=unmatched_opening_ids,
             matched_to_floor_not_wall_opening_ids=matched_to_floor_not_wall_opening_ids,
@@ -392,6 +413,8 @@ def _write_diagnostics_artifacts(
         "num_connections": sum(
             len(getattr(graph, "connections", [])) for graph in context.connectivity_graphs.values()
         ),
+        "num_stairs": len(context.stair_height_ranges),
+        "stair_height_ranges": [list(pair) for pair in context.stair_height_ranges],
         "unmatched_room_ids": list(context.unmatched_room_ids),
         "unmatched_opening_ids": list(context.unmatched_opening_ids),
         "matched_to_floor_not_wall_opening_ids": list(context.matched_to_floor_not_wall_opening_ids),
@@ -563,7 +586,167 @@ def preprocess_hl3d_matterport_to_structural_json(
         output_path=structural_output_path,
         scene_id=resolved_scene_id,
     )
+    _inject_hl3d_metadata_into_structural_scene(
+        structural_scene_path=structural_output_path,
+        context=context,
+    )
     return geojson_output_path, structural_output_path
+
+
+def _opening_waypoint_from_context(opening: Any) -> list[float] | None:
+    centroid = getattr(opening, "centroid_2d", None)
+    if centroid is None:
+        return None
+    arr = np.asarray(centroid, dtype=float).reshape(-1)
+    if arr.size < 2 or not np.all(np.isfinite(arr[:2])):
+        return None
+    return [float(arr[0]), float(arr[1])]
+
+
+def _opening_normal_from_context(opening: Any) -> list[float] | None:
+    normal = getattr(opening, "normal_3d", None)
+    if normal is None:
+        return None
+    arr = np.asarray(normal, dtype=float).reshape(-1)
+    if arr.size < 2 or not np.all(np.isfinite(arr[:2])):
+        return None
+    norm_xy = float(np.linalg.norm(arr[:2]))
+    if norm_xy <= 1e-9:
+        return None
+    return [float(arr[0] / norm_xy), float(arr[1] / norm_xy)]
+
+
+def _opening_bbox_from_context(opening: Any) -> dict[str, list[float]] | None:
+    vertices = getattr(opening, "vertices_3d", None)
+    if vertices is None:
+        return None
+    arr = np.asarray(vertices, dtype=float)
+    if arr.ndim != 2 or arr.shape[1] < 3 or arr.shape[0] < 1 or not np.all(np.isfinite(arr[:, :3])):
+        return None
+    xyz_min = arr[:, :3].min(axis=0)
+    xyz_max = arr[:, :3].max(axis=0)
+    return {
+        "min": [float(xyz_min[0]), float(xyz_min[1]), float(xyz_min[2])],
+        "max": [float(xyz_max[0]), float(xyz_max[1]), float(xyz_max[2])],
+    }
+
+
+def _serialize_openings_from_context(context: Hl3dPreprocessContext) -> list[dict[str, Any]]:
+    if not context.openings_by_floor:
+        return []
+
+    serialized: list[dict[str, Any]] = []
+    for floor_idx, floor_openings in context.openings_by_floor.items():
+        for entry in floor_openings:
+            if not isinstance(entry, (tuple, list)) or not entry:
+                continue
+            opening = entry[0]
+            opening_type = str(getattr(opening, "opening_type", "")).strip()
+            if opening_type not in {"door", "window"}:
+                continue
+
+            item: dict[str, Any] = {
+                "opening_type": opening_type,
+                "floor_index": int(floor_idx),
+            }
+            opening_id = getattr(opening, "opening_id", None)
+            if opening_id is not None:
+                item["opening_id"] = opening_id
+
+            waypoint_xy = _opening_waypoint_from_context(opening)
+            if waypoint_xy is not None:
+                item["waypoint_xy"] = waypoint_xy
+
+            normal_xy = _opening_normal_from_context(opening)
+            if normal_xy is not None:
+                item["normal_xy"] = normal_xy
+
+            bbox = _opening_bbox_from_context(opening)
+            if bbox is not None:
+                item["bbox"] = bbox
+
+            if "waypoint_xy" in item or "bbox" in item:
+                serialized.append(item)
+    return serialized
+
+
+def _opening_key(opening: dict[str, Any]) -> tuple[Any, ...]:
+    waypoint = opening.get("waypoint_xy")
+    if isinstance(waypoint, list) and len(waypoint) >= 2:
+        wp = (round(float(waypoint[0]), 6), round(float(waypoint[1]), 6))
+    else:
+        wp = None
+    return (
+        opening.get("opening_type"),
+        opening.get("opening_id"),
+        opening.get("floor_index"),
+        wp,
+    )
+
+
+def _serialize_stairs_from_context(context: Hl3dPreprocessContext) -> list[dict[str, Any]]:
+    if not context.stair_height_ranges:
+        return []
+
+    floor_levels = sorted(
+        (int(floor.level_index), float(floor.mean_height))
+        for floor in context.floorplans
+    )
+
+    def _nearest_floor(z_value: float) -> int | None:
+        if not floor_levels:
+            return None
+        return min(floor_levels, key=lambda item: abs(item[1] - z_value))[0]
+
+    stairs: list[dict[str, Any]] = []
+    for idx, (z_min, z_max) in enumerate(context.stair_height_ranges):
+        stair_payload: dict[str, Any] = {
+            "stair_id": idx,
+            "z_min": float(z_min),
+            "z_max": float(z_max),
+        }
+        from_floor = _nearest_floor(float(z_min))
+        to_floor = _nearest_floor(float(z_max))
+        if from_floor is not None:
+            stair_payload["from_floor_index"] = int(from_floor)
+        if to_floor is not None:
+            stair_payload["to_floor_index"] = int(to_floor)
+        stairs.append(stair_payload)
+    return stairs
+
+
+def _inject_hl3d_metadata_into_structural_scene(
+    structural_scene_path: Path,
+    context: Hl3dPreprocessContext,
+) -> None:
+    payload = json.loads(structural_scene_path.read_text())
+
+    context_openings = _serialize_openings_from_context(context)
+    existing_openings = payload.get("openings", [])
+    merged_openings: list[dict[str, Any]] = []
+    seen_openings: set[tuple[Any, ...]] = set()
+    for opening in existing_openings if isinstance(existing_openings, list) else []:
+        if not isinstance(opening, dict):
+            continue
+        key = _opening_key(opening)
+        if key in seen_openings:
+            continue
+        seen_openings.add(key)
+        merged_openings.append(opening)
+    for opening in context_openings:
+        key = _opening_key(opening)
+        if key in seen_openings:
+            continue
+        seen_openings.add(key)
+        merged_openings.append(opening)
+    if merged_openings:
+        payload["openings"] = merged_openings
+
+    stairs = _serialize_stairs_from_context(context)
+    if stairs:
+        payload["stairs"] = stairs
+
+    structural_scene_path.write_text(json.dumps(payload, indent=2))
 
 
 def _compute_trajectory_room_centers(

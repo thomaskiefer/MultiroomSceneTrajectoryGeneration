@@ -49,6 +49,7 @@ class ConnectionSpec:
     room2_id: str
     waypoint_xy: Optional[tuple[float, float]]
     normal_xy: Optional[tuple[float, float]]
+    door_type: Optional[str]
 
 
 @dataclass(frozen=True)
@@ -131,7 +132,7 @@ def _parse_structural_payload(payload: dict[str, Any]) -> StructuralScene:
     raw_floors = payload["floors"]
     _expect_type(raw_floors, list, "floors")
     if not raw_floors:
-        raise RuntimeError("Structural scene has no floors.")
+        raise ValueError("Structural scene has no floors.")
 
     floors: list[FloorSpec] = []
     floor_map: dict[int, FloorSpec] = {}
@@ -162,7 +163,7 @@ def _parse_structural_payload(payload: dict[str, Any]) -> StructuralScene:
     raw_rooms = payload["rooms"]
     _expect_type(raw_rooms, list, "rooms")
     if not raw_rooms:
-        raise RuntimeError("Structural scene has no rooms.")
+        raise ValueError("Structural scene has no rooms.")
 
     def _nearest_floor_index(z_center: float) -> int:
         return min(floor_map.keys(), key=lambda idx: abs(floor_map[idx].z - z_center))
@@ -275,18 +276,28 @@ def _parse_structural_payload(payload: dict[str, Any]) -> StructuralScene:
         seen_connection_pairs.add(pair)
         waypoint_xy = None
         normal_xy = None
+        door_type = None
         if "waypoint_xy" in raw and raw["waypoint_xy"] is not None:
             wp = _parse_vec(raw["waypoint_xy"], f"connections[{i}].waypoint_xy", 2)
             waypoint_xy = (float(wp[0]), float(wp[1]))
         if "normal_xy" in raw and raw["normal_xy"] is not None:
             n = _parse_vec(raw["normal_xy"], f"connections[{i}].normal_xy", 2)
             normal_xy = (float(n[0]), float(n[1]))
+        if "door_type" in raw and raw["door_type"] is not None:
+            _expect_type(raw["door_type"], str, f"connections[{i}].door_type")
+            parsed_door_type = str(raw["door_type"]).strip().lower()
+            if parsed_door_type not in {"actual", "synthetic"}:
+                raise ValueError(
+                    f"Invalid `connections[{i}].door_type`: expected 'actual' or 'synthetic'."
+                )
+            door_type = parsed_door_type
         connections.append(
             ConnectionSpec(
                 room1_id=room1_id,
                 room2_id=room2_id,
                 waypoint_xy=waypoint_xy,
                 normal_xy=normal_xy,
+                door_type=door_type,
             )
         )
 

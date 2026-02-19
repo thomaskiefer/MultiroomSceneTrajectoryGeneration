@@ -16,12 +16,19 @@ class CatmullRomSpline:
         Args:
             points: Array of shape (N, 3)
         """
-        self.points = points
+        pts = np.asarray(points, dtype=float)
+        if pts.ndim != 2:
+            raise ValueError(f"`points` must be a 2D array of shape (N, 3); got ndim={pts.ndim}.")
+        if pts.shape[1] != 3:
+            raise ValueError(f"`points` must have shape (N, 3); got shape={pts.shape}.")
+        if not np.all(np.isfinite(pts)):
+            raise ValueError("`points` contains non-finite values (NaN/Inf).")
+        self.points = pts
 
         # Chordal parameterization: t increments by Euclidean distance.
-        self.t = np.zeros(len(points))
-        for i in range(1, len(points)):
-            dist = float(np.linalg.norm(points[i] - points[i - 1]))
+        self.t = np.zeros(len(pts))
+        for i in range(1, len(pts)):
+            dist = float(np.linalg.norm(pts[i] - pts[i - 1]))
             if dist < 1e-6:
                 dist = 1e-6
             self.t[i] = self.t[i - 1] + dist

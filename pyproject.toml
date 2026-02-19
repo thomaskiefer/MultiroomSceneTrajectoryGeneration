@@ -32,7 +32,11 @@ visualization = [
 dev = [
   "ruff",
   "mypy",
+  "pytest",
   "jsonschema",
+  "shapely",
+  "matplotlib",
+  "opencv-python",
 ]
 full = [
   "shapely",
@@ -45,7 +49,11 @@ full = [
 dev = [
   "ruff",
   "mypy",
+  "pytest",
   "jsonschema",
+  "shapely",
+  "matplotlib",
+  "opencv-python",
 ]
 
 [project.scripts]
@@ -70,3 +78,6 @@ ignore_missing_imports = true
 check_untyped_defs = false
 warn_unused_ignores = true
 exclude = ["^tests/"]
+
+[tool.uv]
+default-groups = ["dev"]

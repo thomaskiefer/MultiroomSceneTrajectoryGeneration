@@ -1,15 +1,15 @@
 {
-  "scene": "matterport_2t7WUuJeko7",
+  "scene": "2t7WUuJeko7",
   "dataset_root": ".",
-  "output_dir": "samples/matterport_2t7WUuJeko7",
+  "output_dir": "samples_door_shortcut/2t7WUuJeko7",
   "floor_trajectories": [
     {
       "floor_index": 0,
       "floor_z": 0.001906614767608812,
-      "num_frames": 3513,
+      "num_frames": 1294,
       "num_rooms": 6,
       "num_connections": 5,
-      "output_file": "matterport_2t7WUuJeko7_floor_0_trajectory.json"
+      "output_file": "2t7WUuJeko7_floor_0_trajectory.json"
     }
   ],
   "connectivity_statistics": {

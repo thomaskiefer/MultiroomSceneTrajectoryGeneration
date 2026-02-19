@@ -69,6 +69,17 @@ class CatmullRomSplineTest(unittest.TestCase):
         sampled[0, 0] = -100.0
         self.assertNotEqual(float(spline.points[0, 0]), -100.0)
 
+    def test_rejects_non_finite_points(self) -> None:
+        points = np.array([[0.0, 0.0, 0.0], [np.nan, 1.0, 0.0]])
+        with self.assertRaises(ValueError):
+            CatmullRomSpline(points)
+
+    def test_rejects_invalid_point_shape(self) -> None:
+        with self.assertRaises(ValueError):
+            CatmullRomSpline(np.array([0.0, 1.0, 2.0]))
+        with self.assertRaises(ValueError):
+            CatmullRomSpline(np.array([[0.0, 1.0], [2.0, 3.0]]))
+
 
 if __name__ == "__main__":
     unittest.main()

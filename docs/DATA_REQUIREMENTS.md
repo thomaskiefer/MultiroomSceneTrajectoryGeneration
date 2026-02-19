@@ -14,11 +14,13 @@ Optional:
 - `rooms[].floor_index` (auto-assigned by nearest floor `z` if omitted)
 - `rooms[].polygon_xy` (requires `shapely`)
 - `connections[]` with optional `waypoint_xy` and `normal_xy`
+- `openings[]` (`opening_type` + `waypoint_xy`/`bbox`, optional `normal_xy`)
+- `stairs[]` (`z_min`, `z_max`, optional nearest-floor indices)
 
 Reference examples:
 - `examples/structural/demo_apartment.json`
-- `examples/structural/matterport_2t7WUuJeko7.json`
-- `samples/matterport_2t7WUuJeko7/matterport_2t7WUuJeko7_connectivity.geojson` (generated visualization fixture)
+- `examples/structural/2t7WUuJeko7.json`
+- `samples/2t7WUuJeko7/2t7WUuJeko7_connectivity.geojson` (generated visualization fixture)
 - Machine-readable schema:
   - `docs/schema/scene.schema.v1.json`
 
@@ -37,6 +39,8 @@ Expected upstream assets:
 This workflow is intended to mirror the original HL3D preprocessing flow and produce:
 - connectivity GeoJSON
 - canonical structural JSON for portable downstream generation
+  - includes `openings[]` (doors/windows) when available from HL3D opening data
+  - includes `stairs[]` from Matterport stair height ranges
 
 ## 3) Neutral structural-primitives template input
 

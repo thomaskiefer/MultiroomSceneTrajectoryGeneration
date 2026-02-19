@@ -1,0 +1,30 @@
+{
+  "scene": "structural_template",
+  "dataset_root": ".",
+  "output_dir": "samples_door_shortcut/structural_template",
+  "floor_trajectories": [
+    {
+      "floor_index": 0,
+      "floor_z": 0.0,
+      "num_frames": 1109,
+      "num_rooms": 5,
+      "num_connections": 5,
+      "output_file": "structural_template_floor_0_trajectory.json"
+    }
+  ],
+  "connectivity_statistics": {
+    "0": {
+      "floor_level": 0,
+      "num_rooms": 5,
+      "num_connections": 5,
+      "actual_doors": 5,
+      "synthetic_doors": 0,
+      "avg_degree": 2.0,
+      "max_degree": 3,
+      "isolated_rooms": [],
+      "num_isolated": 0
+    }
+  },
+  "component_transfers_by_floor": {},
+  "warnings": []
+}

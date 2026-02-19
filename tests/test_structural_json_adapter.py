@@ -118,6 +118,60 @@ class StructuralJsonAdapterTest(unittest.TestCase):
             self.assertEqual(len(artifacts.floor_trajectories), 1)
             self.assertEqual(artifacts.connectivity_statistics[0]["num_connections"], 1)
 
+    def test_explicit_connections_auto_classify_actual_from_door_openings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            scene_json = self._write_scene(
+                root,
+                {
+                    "scene": "scene_struct_doors",
+                    "floors": [
+                        {
+                            "floor_index": 0,
+                            "z": 0.0,
+                            "footprint_xy": [[0, 0], [10, 0], [10, 10], [0, 10]],
+                        }
+                    ],
+                    "rooms": [
+                        {
+                            "room_id": "r1",
+                            "floor_index": 0,
+                            "semantic": "entryway",
+                            "bbox": {"min": [0, 0, 0], "max": [2, 2, 3]},
+                        },
+                        {
+                            "room_id": "r2",
+                            "floor_index": 0,
+                            "semantic": "living_room",
+                            "bbox": {"min": [3, 0, 0], "max": [5, 2, 3]},
+                        },
+                    ],
+                    "connections": [
+                        {
+                            "room1_id": "r1",
+                            "room2_id": "r2",
+                            "waypoint_xy": [2.5, 1.0],
+                        }
+                    ],
+                    "openings": [
+                        {
+                            "opening_type": "door",
+                            "floor_index": 0,
+                            "waypoint_xy": [2.55, 1.02],
+                        }
+                    ],
+                },
+            )
+            cfg = TrajectoryGenerationConfig.structural_json(
+                scene_input_json=scene_json,
+                output_dir=Path("outputs"),
+                dataset_root=root,
+            )
+
+            artifacts = run_structural_json(cfg, project_root=root)
+            self.assertEqual(artifacts.connectivity_statistics[0]["actual_doors"], 1)
+            self.assertEqual(artifacts.connectivity_statistics[0]["synthetic_doors"], 0)
+
     def test_missing_required_keys_fails_with_clear_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
@@ -136,7 +190,7 @@ class StructuralJsonAdapterTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 run_structural_json(cfg, project_root=root)
 
-    def test_no_rooms_or_floors_raises_runtime_error(self) -> None:
+    def test_no_rooms_or_floors_raises_value_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             scene_json = self._write_scene(
@@ -158,7 +212,7 @@ class StructuralJsonAdapterTest(unittest.TestCase):
                 output_dir=Path("outputs"),
                 dataset_root=root,
             )
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises(ValueError):
                 run_structural_json(cfg, project_root=root)
 
     def test_all_components_restart_mode_emits_warning_without_transfer_events(self) -> None:

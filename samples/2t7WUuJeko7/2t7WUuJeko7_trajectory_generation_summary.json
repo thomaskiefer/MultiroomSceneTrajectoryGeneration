@@ -1,0 +1,30 @@
+{
+  "scene": "2t7WUuJeko7",
+  "dataset_root": ".",
+  "output_dir": "samples/2t7WUuJeko7",
+  "floor_trajectories": [
+    {
+      "floor_index": 0,
+      "floor_z": 0.001906614767608812,
+      "num_frames": 2133,
+      "num_rooms": 6,
+      "num_connections": 5,
+      "output_file": "2t7WUuJeko7_floor_0_trajectory.json"
+    }
+  ],
+  "connectivity_statistics": {
+    "0": {
+      "floor_level": 0,
+      "num_rooms": 6,
+      "num_connections": 5,
+      "actual_doors": 5,
+      "synthetic_doors": 0,
+      "avg_degree": 1.6666666666666667,
+      "max_degree": 3,
+      "isolated_rooms": [],
+      "num_isolated": 0
+    }
+  },
+  "component_transfers_by_floor": {},
+  "warnings": []
+}

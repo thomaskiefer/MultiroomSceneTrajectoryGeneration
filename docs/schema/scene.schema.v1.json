@@ -98,12 +98,74 @@
             "minItems": 2,
             "maxItems": 2,
             "items": { "type": "number" }
+          },
+          "door_type": {
+            "type": "string",
+            "enum": ["actual", "synthetic"]
           }
         },
         "additionalProperties": true
       }
     },
-    "openings": {}
+    "openings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["opening_type"],
+        "properties": {
+          "opening_type": { "type": "string", "enum": ["door", "window"] },
+          "opening_id": {},
+          "floor_index": { "type": "integer" },
+          "waypoint_xy": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": { "type": "number" }
+          },
+          "normal_xy": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": { "type": "number" }
+          },
+          "bbox": {
+            "type": "object",
+            "required": ["min", "max"],
+            "properties": {
+              "min": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 3,
+                "items": { "type": "number" }
+              },
+              "max": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 3,
+                "items": { "type": "number" }
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "stairs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["z_min", "z_max"],
+        "properties": {
+          "stair_id": {},
+          "z_min": { "type": "number" },
+          "z_max": { "type": "number" },
+          "from_floor_index": { "type": "integer" },
+          "to_floor_index": { "type": "integer" }
+        },
+        "additionalProperties": true
+      }
+    }
   },
   "additionalProperties": true
 }

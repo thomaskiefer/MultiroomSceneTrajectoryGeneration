@@ -33,6 +33,14 @@ Optional:
 - `--log-level DEBUG|INFO|WARNING|ERROR|CRITICAL`.
 - `--use-local-walkthrough` or `--use-legacy-walkthrough`.
 
+### Minimal one-file flow (generate + visualize)
+
+```bash
+python scripts/minimal_generate_and_visualize.py \
+  --scene-input-json examples/structural/demo_apartment.json \
+  --output-dir outputs/minimal_demo
+```
+
 ### Validate structural JSON schema only
 
 ```bash
@@ -51,6 +59,8 @@ mrstg preprocess \
   --geojson-output outputs/preprocess/2t7WUuJeko7_connectivity.geojson \
   --structural-output outputs/preprocess/2t7WUuJeko7_structural_scene.json
 ```
+
+`<scene>_structural_scene.json` includes `openings[]` (door/window metadata) when available and `stairs[]` from Matterport stair ranges.
 
 Useful preprocess flags:
 - `--geojson-only`: stop after connectivity GeoJSON.
@@ -78,9 +88,9 @@ Quick no-dataset demo:
 uv run python scripts/regenerate_samples.py
 
 uv run mrstg-viz \
-  --geojson samples/matterport_2t7WUuJeko7/matterport_2t7WUuJeko7_connectivity.geojson \
-  --trajectory samples/matterport_2t7WUuJeko7/matterport_2t7WUuJeko7_floor_0_trajectory.json \
-  --output-dir samples/matterport_2t7WUuJeko7/visualizations \
+  --geojson samples/2t7WUuJeko7/2t7WUuJeko7_connectivity.geojson \
+  --trajectory samples/2t7WUuJeko7/2t7WUuJeko7_floor_0_trajectory.json \
+  --output-dir samples/2t7WUuJeko7/visualizations \
   --fps 30 \
   --speed 1.0 \
   --image
@@ -132,7 +142,7 @@ uv run python scripts/regenerate_samples.py
 
 Generated bundle:
 - `samples/demo_apartment/`
-- `samples/matterport_2t7WUuJeko7/`
+- `samples/2t7WUuJeko7/`
 - `samples/structural_template/`
 
 ## Programmatic API
@@ -154,5 +164,5 @@ Prefix any command with `uv run`, for example:
 
 ```bash
 uv run mrstg --workflow structural_json --scene-input-json examples/structural/demo_apartment.json --output-dir outputs/demo
-uv run mrstg-viz --geojson samples/matterport_2t7WUuJeko7/matterport_2t7WUuJeko7_connectivity.geojson --trajectory samples/matterport_2t7WUuJeko7/matterport_2t7WUuJeko7_floor_0_trajectory.json --output-dir samples/matterport_2t7WUuJeko7/visualizations --fps 30 --speed 1.0
+uv run mrstg-viz --geojson samples/2t7WUuJeko7/2t7WUuJeko7_connectivity.geojson --trajectory samples/2t7WUuJeko7/2t7WUuJeko7_floor_0_trajectory.json --output-dir samples/2t7WUuJeko7/visualizations --fps 30 --speed 1.0
 ```

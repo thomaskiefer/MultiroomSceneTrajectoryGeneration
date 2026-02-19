@@ -227,6 +227,15 @@ class HouselayoutMatterportAdapterTest(unittest.TestCase):
             summary_path = (root / "outputs" / f"{scene}_trajectory_generation_summary.json")
             self.assertTrue(summary_path.exists())
 
+    def test_rejects_empty_scene_id_early(self) -> None:
+        config = TrajectoryGenerationConfig.houselayout3d_matterport(
+            dataset_root=Path("/tmp/dataset"),
+            scene="   ",
+            output_dir=Path("/tmp/out"),
+        )
+        with self.assertRaisesRegex(ValueError, "scene id is empty"):
+            hl3d.run_houselayout3d_matterport(config, project_root=Path("/tmp"))
+
     def test_warns_when_no_openings_available(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)

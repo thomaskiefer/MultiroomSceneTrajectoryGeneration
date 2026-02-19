@@ -1,0 +1,34 @@
+{
+  "scene": "demo_apartment",
+  "dataset_root": ".",
+  "output_dir": "samples_door_shortcut/demo_apartment",
+  "floor_trajectories": [
+    {
+      "floor_index": 0,
+      "floor_z": 0.0,
+      "num_frames": 787,
+      "num_rooms": 6,
+      "num_connections": 6,
+      "output_file": "demo_apartment_floor_0_trajectory.json"
+    }
+  ],
+  "connectivity_statistics": {
+    "0": {
+      "floor_level": 0,
+      "num_rooms": 6,
+      "num_connections": 6,
+      "actual_doors": 6,
+      "synthetic_doors": 0,
+      "avg_degree": 2.0,
+      "max_degree": 3,
+      "isolated_rooms": [
+        "balcony"
+      ],
+      "num_isolated": 1
+    }
+  },
+  "component_transfers_by_floor": {},
+  "warnings": [
+    "[floor 0] skipped 1 room(s) outside largest connected component: balcony"
+  ]
+}

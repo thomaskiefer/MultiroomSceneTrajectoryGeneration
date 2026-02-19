@@ -24,6 +24,7 @@ class RoomGraphWaypoint:
     position: np.ndarray  # [x, y]
     normal: Optional[np.ndarray] = None
     shared_boundary: Any = None
+    door_type: str = "synthetic"
 
 
 @dataclass(eq=False)

@@ -147,6 +147,12 @@ def run_houselayout3d_matterport(
     Run full pipeline from HouseLayout3D geometry + Matterport room annotations:
     floorplan extraction -> room/opening processing -> connectivity -> trajectories.
     """
+    scene = config.dataset.scene.strip()
+    if not scene:
+        raise ValueError(
+            "Dataset scene id is empty. Set `dataset.scene` to a valid HouseLayout3D/Matterport scene id."
+        )
+
     resolved_root = _resolve_project_root(project_root)
     ports = _load_floorplan_modules(resolved_root)
 
@@ -157,7 +163,6 @@ def run_houselayout3d_matterport(
     output_dir = _resolve_path(resolved_root, config.walkthrough.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    scene = config.dataset.scene
     scene_dir = dataset_root / "structures" / "layouts_split_by_entity" / scene
     if not scene_dir.exists():
         raise FileNotFoundError(f"Scene meshes not found at {scene_dir}")

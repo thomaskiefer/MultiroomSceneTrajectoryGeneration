@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Any
+
+import numpy as np
 
 
 def _feature_type(feature: dict[str, Any]) -> str:
@@ -33,6 +36,97 @@ def _extract_normal_xy(props: dict[str, Any]) -> list[float] | None:
         return None
 
 
+def _extract_level_index(props: dict[str, Any]) -> int | None:
+    raw = props.get("level_index", props.get("floor_index"))
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _collect_xy_points(geometry: dict[str, Any]) -> list[list[float]]:
+    gtype = str(geometry.get("type", ""))
+    coords = geometry.get("coordinates")
+    points: list[list[float]] = []
+    if gtype == "Point" and isinstance(coords, (list, tuple)) and len(coords) >= 2:
+        points.append([float(coords[0]), float(coords[1])])
+    elif gtype == "LineString" and isinstance(coords, list):
+        for p in coords:
+            if isinstance(p, (list, tuple)) and len(p) >= 2:
+                points.append([float(p[0]), float(p[1])])
+    elif gtype == "Polygon" and isinstance(coords, list) and coords:
+        ring = coords[0]
+        if isinstance(ring, list):
+            for p in ring:
+                if isinstance(p, (list, tuple)) and len(p) >= 2:
+                    points.append([float(p[0]), float(p[1])])
+    return points
+
+
+def _opening_segment_xy(geometry: dict[str, Any]) -> list[list[float]] | None:
+    gtype = str(geometry.get("type", ""))
+    coords = geometry.get("coordinates")
+    if gtype != "LineString" or not isinstance(coords, list) or len(coords) < 2:
+        return None
+    p0 = coords[0]
+    p1 = coords[-1]
+    if not isinstance(p0, (list, tuple)) or not isinstance(p1, (list, tuple)):
+        return None
+    if len(p0) < 2 or len(p1) < 2:
+        return None
+    try:
+        return [[float(p0[0]), float(p0[1])], [float(p1[0]), float(p1[1])]]
+    except (TypeError, ValueError):
+        return None
+
+
+def _opening_waypoint_xy(geometry: dict[str, Any]) -> list[float] | None:
+    points = _collect_xy_points(geometry)
+    if not points:
+        return None
+    arr = np.array(points, dtype=float)
+    if arr.ndim != 2 or arr.shape[1] != 2:
+        return None
+    center = arr.mean(axis=0)
+    if not np.all(np.isfinite(center)):
+        return None
+    return [float(center[0]), float(center[1])]
+
+
+def _opening_bbox(
+    geometry: dict[str, Any],
+    props: dict[str, Any],
+) -> dict[str, list[float]] | None:
+    z_min_raw = props.get("z_min")
+    z_max_raw = props.get("z_max")
+    if z_min_raw is None or z_max_raw is None:
+        return None
+    points = _collect_xy_points(geometry)
+    if not points:
+        return None
+    try:
+        z_min = float(z_min_raw)
+        z_max = float(z_max_raw)
+    except (TypeError, ValueError):
+        return None
+    if not (math.isfinite(z_min) and math.isfinite(z_max)):
+        return None
+    arr = np.array(points, dtype=float)
+    if arr.ndim != 2 or arr.shape[1] != 2:
+        return None
+    if not np.all(np.isfinite(arr)):
+        return None
+    xy_min = arr.min(axis=0)
+    xy_max = arr.max(axis=0)
+    z_lo, z_hi = (z_min, z_max) if z_min <= z_max else (z_max, z_min)
+    return {
+        "min": [float(xy_min[0]), float(xy_min[1]), float(z_lo)],
+        "max": [float(xy_max[0]), float(xy_max[1]), float(z_hi)],
+    }
+
+
 def convert_connectivity_geojson_payload(
     payload: dict[str, Any],
     scene_id: str,
@@ -44,6 +138,7 @@ def convert_connectivity_geojson_payload(
     room_features = [f for f in features if _feature_type(f) == "room"]
     conn_features = [f for f in features if _feature_type(f) == "room_connection"]
     waypoint_features = [f for f in features if _feature_type(f) == "door_waypoint"]
+    opening_features = [f for f in features if _feature_type(f) in {"door", "window"}]
 
     if not floor_features:
         raise ValueError("No floor_footprint features found in GeoJSON.")
@@ -148,15 +243,70 @@ def convert_connectivity_geojson_payload(
         normal_xy = _extract_normal_xy(props)
         if normal_xy is not None:
             conn_payload["normal_xy"] = normal_xy
+        door_type = props.get("door_type")
+        if isinstance(door_type, str):
+            parsed_door_type = door_type.strip().lower()
+            if parsed_door_type in {"actual", "synthetic"}:
+                conn_payload["door_type"] = parsed_door_type
         connections.append(conn_payload)
 
-    return {
+    openings: list[dict[str, Any]] = []
+    for opening in opening_features:
+        props = opening.get("properties", {})
+        geometry = opening.get("geometry", {})
+        opening_type = _feature_type(opening)
+        if opening_type not in {"door", "window"}:
+            continue
+
+        waypoint_xy = _opening_waypoint_xy(geometry)
+        bbox = _opening_bbox(geometry, props)
+        if waypoint_xy is None and bbox is None:
+            continue
+
+        item: dict[str, Any] = {"opening_type": opening_type}
+        segment_xy = _opening_segment_xy(geometry)
+        if segment_xy is not None:
+            item["segment_xy"] = segment_xy
+        opening_id = props.get("opening_id")
+        if opening_id is not None:
+            item["opening_id"] = opening_id
+        opening_floor_index = _extract_level_index(props)
+        if opening_floor_index is not None:
+            item["floor_index"] = opening_floor_index
+        if waypoint_xy is not None:
+            item["waypoint_xy"] = waypoint_xy
+        if bbox is not None:
+            item["bbox"] = bbox
+        normal_xy = _extract_normal_xy(props)
+        if normal_xy is not None:
+            item["normal_xy"] = normal_xy
+        width = props.get("width")
+        if width is not None:
+            try:
+                item["width"] = float(width)
+            except (TypeError, ValueError):
+                pass
+        height = props.get("height")
+        if height is not None:
+            try:
+                item["height"] = float(height)
+            except (TypeError, ValueError):
+                pass
+        wall_id = props.get("wall_id")
+        if wall_id is not None:
+            item["wall_id"] = wall_id
+        openings.append(item)
+
+    output = {
         "schema_version": "scene.schema.v1",
         "scene": scene_id,
         "floors": floors,
         "rooms": rooms,
         "connections": connections,
     }
+    if openings:
+        output["openings"] = openings
+    return output
 
 
 def convert_connectivity_geojson_file(

@@ -40,6 +40,17 @@ class TrajectoryGenerationConfigTest(unittest.TestCase):
         self.assertEqual(cfg.walkthrough.behavior.max_angular_speed_deg, 360.0)
         self.assertEqual(cfg.walkthrough.behavior.look_at_mode, "tangent")
         self.assertEqual(cfg.walkthrough.behavior.disconnected_transition_mode, "bridge")
+        self.assertEqual(cfg.walkthrough.behavior.neighbor_priority_mode, "human_like")
+        self.assertEqual(cfg.walkthrough.behavior.revisit_transition_mode, "center_arc")
+        self.assertEqual(cfg.walkthrough.behavior.loop_closure_mode, "auto")
+        self.assertTrue(cfg.walkthrough.behavior.prefer_outer_revisit_arc)
+        self.assertEqual(cfg.walkthrough.behavior.revisit_arc_angle_search_deg, 30.0)
+        self.assertEqual(cfg.walkthrough.behavior.revisit_arc_search_steps, 7)
+        self.assertEqual(cfg.walkthrough.behavior.revisit_arc_max_span_deg, 360.0)
+        self.assertEqual(cfg.walkthrough.behavior.revisit_arc_reverse_pref_deg, 155.0)
+        self.assertEqual(cfg.walkthrough.behavior.revisit_arc_reverse_long_arc_bonus, 0.35)
+        self.assertEqual(cfg.walkthrough.behavior.revisit_arc_transition_risk_distance_weight, 0.35)
+        self.assertEqual(cfg.walkthrough.behavior.revisit_arc_transition_risk_angle_weight, 0.50)
         self.assertEqual(
             cfg.walkthrough.behavior.disconnected_component_policy,
             "largest_component_only",
@@ -70,7 +81,7 @@ class TrajectoryGenerationConfigTest(unittest.TestCase):
         self.assertEqual(loaded.dataset.dataset_root, Path("/tmp/dataset"))
         self.assertEqual(loaded.dataset.scene, "scene_abc")
         self.assertEqual(loaded.walkthrough.output_dir, Path("outputs/trajectory_generation"))
-        self.assertEqual(loaded.walkthrough.behavior.travel_speed, 0.5)
+        self.assertEqual(loaded.walkthrough.behavior.travel_speed, 0.8)
         self.assertEqual(loaded.workflow, "houselayout3d_matterport")
 
         as_dict = loaded.to_dict()
@@ -160,6 +171,42 @@ class TrajectoryGenerationConfigTest(unittest.TestCase):
                 }
             )
 
+    def test_rejects_invalid_neighbor_priority_mode(self) -> None:
+        with self.assertRaises(ValueError):
+            WalkthroughBehaviorConfig(neighbor_priority_mode="random_walk")
+
+    def test_rejects_invalid_revisit_transition_mode(self) -> None:
+        with self.assertRaises(ValueError):
+            WalkthroughBehaviorConfig(revisit_transition_mode="teleport_arc")
+
+    def test_rejects_invalid_loop_closure_mode(self) -> None:
+        with self.assertRaises(ValueError):
+            WalkthroughBehaviorConfig(loop_closure_mode="force")
+
+    def test_rejects_missing_dataset_in_from_dict(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Missing required top-level field `dataset`"):
+            TrajectoryGenerationConfig.from_dict(
+                {
+                    "workflow": "structural_json",
+                }
+            )
+
+    def test_rejects_unknown_section_keys_with_clear_error(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Invalid `floorplan` config keys"):
+            TrajectoryGenerationConfig.from_dict(
+                {
+                    "dataset": {"dataset_root": "/tmp/data", "scene": "s"},
+                    "floorplan": {"unknown_field": 1},
+                }
+            )
+        with self.assertRaisesRegex(ValueError, "Invalid `walkthrough.behavior` config keys"):
+            TrajectoryGenerationConfig.from_dict(
+                {
+                    "dataset": {"dataset_root": "/tmp/data", "scene": "s"},
+                    "walkthrough": {"behavior": {"unknown_behavior_key": 1}},
+                }
+            )
+
     def test_from_dict_ignores_legacy_output_format_field(self) -> None:
         payload = {
             "dataset": {"dataset_root": "/tmp/data", "scene": "s"},
@@ -188,6 +235,34 @@ class TrajectoryGenerationConfigTest(unittest.TestCase):
             WalkthroughBehaviorConfig(spin_segment_speed=0.0)
         with self.assertRaises(ValueError):
             WalkthroughBehaviorConfig(passthrough_speed=0.0)
+        with self.assertRaises(ValueError):
+            WalkthroughBehaviorConfig(revisit_arc_angle_search_deg=-1.0)
+        with self.assertRaises(ValueError):
+            WalkthroughBehaviorConfig(revisit_arc_angle_search_deg=180.0)
+        with self.assertRaises(ValueError):
+            WalkthroughBehaviorConfig(revisit_arc_search_steps=0)
+        with self.assertRaises(ValueError):
+            WalkthroughBehaviorConfig(revisit_arc_length_weight=-0.1)
+        with self.assertRaises(ValueError):
+            WalkthroughBehaviorConfig(revisit_arc_outer_bias=-0.1)
+        with self.assertRaises(ValueError):
+            WalkthroughBehaviorConfig(revisit_arc_max_span_deg=0.0)
+        with self.assertRaises(ValueError):
+            WalkthroughBehaviorConfig(revisit_arc_max_span_deg=361.0)
+        with self.assertRaises(ValueError):
+            WalkthroughBehaviorConfig(revisit_arc_reverse_pref_deg=180.0)
+        with self.assertRaises(ValueError):
+            WalkthroughBehaviorConfig(revisit_arc_reverse_long_arc_bonus=-0.1)
+        with self.assertRaises(ValueError):
+            WalkthroughBehaviorConfig(revisit_arc_transition_risk_distance_weight=-0.1)
+        with self.assertRaises(ValueError):
+            WalkthroughBehaviorConfig(revisit_arc_transition_risk_angle_weight=-0.1)
+        with self.assertRaises(ValueError):
+            WalkthroughBehaviorConfig(revisit_arc_max_tangent_mismatch_deg=0.0)
+        with self.assertRaises(ValueError):
+            WalkthroughBehaviorConfig(passthrough_min_turn_deg=-1.0)
+        with self.assertRaises(ValueError):
+            WalkthroughBehaviorConfig(passthrough_min_turn_deg=180.0)
         with self.assertRaises(ValueError):
             WalkthroughBehaviorConfig(min_speed_clamp=0.0)
         with self.assertRaises(ValueError):
