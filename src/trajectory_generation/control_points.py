@@ -793,20 +793,20 @@ class ControlPointPlanner:
                     for delta in candidate_deltas:
                         is_long_arc = abs(delta) > (np.pi + 1e-6)
                         sign = 1.0 if delta >= 0.0 else -1.0
-                        start_tangent = np.array(
+                        start_tangent_vec = np.array(
                             [sign * np.sin(entry_angle), -sign * np.cos(entry_angle)],
                             dtype=float,
                         )
-                        start_tangent = self._normalize_dir(start_tangent)
+                        start_tangent = self._normalize_dir(start_tangent_vec)
                         if start_tangent is None:
                             continue
 
                         end_angle = entry_angle + delta
-                        end_tangent = np.array(
+                        end_tangent_vec = np.array(
                             [sign * np.sin(end_angle), -sign * np.cos(end_angle)],
                             dtype=float,
                         )
-                        end_tangent = self._normalize_dir(end_tangent)
+                        end_tangent = self._normalize_dir(end_tangent_vec)
                         if end_tangent is None:
                             continue
 
