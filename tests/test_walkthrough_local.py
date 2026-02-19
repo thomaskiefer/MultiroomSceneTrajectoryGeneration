@@ -753,8 +753,6 @@ class LocalWalkthroughLogicTest(unittest.TestCase):
         # start_pos = center - s*v, start_look = center + v.
         start_pos = np.array([-orbit_r, 0.0, walker.eye_level], dtype=float)
         start_look = np.array([look_r, 0.0, walker.eye_level], dtype=float)
-        s = float(walker.behavior.spin_orbit_scale)
-        center_xy = start_pos[:2] + (s / (1.0 + s)) * (start_look[:2] - start_pos[:2])
         mid_pos = np.array([0.0, -orbit_r, walker.eye_level], dtype=float)
         mid_look = np.array([0.0, -look_r, walker.eye_level], dtype=float)
         prev_pos = np.array([orbit_r * 0.6, -orbit_r * 0.8, walker.eye_level], dtype=float)
