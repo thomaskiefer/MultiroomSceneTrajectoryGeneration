@@ -87,17 +87,17 @@ class CatmullRomSpline:
         p3 = np.asarray(p3, dtype=float).reshape(1, -1)
 
         if abs(t1 - t0) < 1e-9:
-            a1 = np.repeat(p0, t_values.shape[0], axis=0)
+            a1 = np.repeat(p1, t_values.shape[0], axis=0)
         else:
             a1 = (t1 - t_values) / (t1 - t0) * p0 + (t_values - t0) / (t1 - t0) * p1
 
         if abs(t2 - t1) < 1e-9:
-            a2 = np.repeat(p1, t_values.shape[0], axis=0)
+            a2 = np.repeat(p2, t_values.shape[0], axis=0)
         else:
             a2 = (t2 - t_values) / (t2 - t1) * p1 + (t_values - t1) / (t2 - t1) * p2
 
         if abs(t3 - t2) < 1e-9:
-            a3 = np.repeat(p2, t_values.shape[0], axis=0)
+            a3 = np.repeat(p3, t_values.shape[0], axis=0)
         else:
             a3 = (t3 - t_values) / (t3 - t2) * p2 + (t_values - t2) / (t3 - t2) * p3
 

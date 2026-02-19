@@ -263,6 +263,37 @@ class LocalWalkthroughLogicTest(unittest.TestCase):
         self.assertAlmostEqual(float(center[0]), 2.0, places=6)
         self.assertAlmostEqual(float(center[1]), 4.0, places=6)
 
+    def test_get_room_center_uses_cache(self) -> None:
+        class _CountingPoly:
+            def __init__(self):
+                self.area = 10.0
+                self.centroid_calls = 0
+                self.representative_calls = 0
+                self._centroid = _Point(2.0, 3.0)
+                self._representative = _Point(2.0, 3.0)
+
+            @property
+            def centroid(self):
+                self.centroid_calls += 1
+                return self._centroid
+
+            def representative_point(self):
+                self.representative_calls += 1
+                return self._representative
+
+        poly = _CountingPoly()
+        rooms = {
+            "a": (_Room("living_room", np.array([2.0, 3.0, 0.0])), poly),
+        }
+        walker = LocalWalkthroughGenerator(_Graph(rooms), floor_z=0.0)
+        center1 = walker._get_room_center("a")
+        centroid_calls_after_first = poly.centroid_calls
+        representative_calls_after_first = poly.representative_calls
+        center2 = walker._get_room_center("a")
+        self.assertTrue(np.allclose(center1, center2))
+        self.assertEqual(poly.centroid_calls, centroid_calls_after_first)
+        self.assertEqual(poly.representative_calls, representative_calls_after_first)
+
     def test_generate_exploration_path_handles_static_path(self) -> None:
         rooms = {
             "a": (_Room("entryway", np.array([0.0, 0.0, 0.0])), _Poly(10.0, x=0.0, y=0.0)),
@@ -742,6 +773,7 @@ class LocalWalkthroughLogicTest(unittest.TestCase):
             behavior=WalkthroughBehaviorConfig(
                 revisit_transition_mode="center_arc",
                 loop_closure_mode="enabled",
+                look_at_mode="spline_target",
                 spin_orbit_scale=0.1,
                 spin_look_radius=2.0,
             ),
@@ -766,6 +798,46 @@ class LocalWalkthroughLogicTest(unittest.TestCase):
         out = walker._apply_loop_closure(seq)
         self.assertGreaterEqual(len(out.positions), len(seq.positions) + 2)
         self.assertTrue(np.allclose(out.positions[-1], out.positions[0], atol=0.0))
+
+    def test_loop_closure_anchor_distance_respects_minimum(self) -> None:
+        rooms = {
+            "a": (_Room("entryway", np.array([0.0, 0.0, 0.0])), _Poly(10.0, x=0.0, y=0.0)),
+        }
+        walker = LocalWalkthroughGenerator(
+            _Graph(rooms),
+            floor_z=0.0,
+            behavior=WalkthroughBehaviorConfig(
+                revisit_transition_mode="center_arc",
+                loop_closure_mode="enabled",
+                look_at_mode="spline_target",
+                spin_orbit_scale=0.1,
+                spin_look_radius=2.0,
+            ),
+        )
+        seq = _ControlPointSequence(
+            positions=np.array(
+                [
+                    [0.0, 0.0, walker.eye_level],   # start
+                    [1.0, 0.0, walker.eye_level],   # sets start tangent (+x)
+                    [0.16, 0.0, walker.eye_level],  # closure_dist=0.16 (>0.15)
+                ],
+                dtype=float,
+            ),
+            look_targets=np.array(
+                [
+                    [2.0, 0.0, walker.eye_level],
+                    [3.0, 0.0, walker.eye_level],
+                    [10.0, 0.0, walker.eye_level],
+                ],
+                dtype=float,
+            ),
+            segment_speeds=np.array([0.8, 0.8], dtype=float),
+        )
+        out = walker._apply_loop_closure(seq)
+        self.assertGreaterEqual(len(out.positions), len(seq.positions) + 2)
+        # Penultimate point is tangent anchor: start - 0.1 * tangent.
+        self.assertAlmostEqual(float(out.positions[-2][0]), -0.1, places=6)
+        self.assertAlmostEqual(float(out.positions[-2][1]), 0.0, places=6)
 
     def test_loop_closure_snap_closes_when_already_near_start(self) -> None:
         rooms = {
@@ -1093,7 +1165,6 @@ class LocalWalkthroughLogicTest(unittest.TestCase):
             behavior=WalkthroughBehaviorConfig(
                 revisit_arc_angle_search_deg=0.0,
                 revisit_arc_search_steps=1,
-                revisit_arc_max_span_deg=120.0,
                 revisit_arc_reverse_pref_deg=150.0,
                 revisit_arc_max_tangent_mismatch_deg=179.0,
             ),

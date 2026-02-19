@@ -518,6 +518,55 @@ class PreprocessTest(unittest.TestCase):
         self.assertIn("bbox", door)
         self.assertEqual(door["segment_xy"], [[1.1, 0.5], [1.3, 0.5]])
 
+    def test_convert_connectivity_geojson_logs_malformed_features(self) -> None:
+        payload = {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [[[0.0, 0.0], [2.0, 0.0], [2.0, 2.0], [0.0, 2.0], [0.0, 0.0]]],
+                    },
+                    "properties": {"type": "floor_footprint", "level_index": 0, "mean_height": 0.0},
+                },
+                {
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [[[0.2, 0.2], [1.0, 0.2], [1.0, 1.0], [0.2, 1.0], [0.2, 0.2]]],
+                    },
+                    "properties": {
+                        "type": "room",
+                        "room_id": "R_1",
+                        "label_semantic": "entryway",
+                        "level_index": 0,
+                        "bbox_3d_min": [0.2, 0.2, 0.0],
+                        "bbox_3d_max": [1.0, 1.0, 2.5],
+                    },
+                },
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [1.0, 1.0]},
+                    "properties": None,
+                },
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "LineString", "coordinates": [[0.8, 0.5], [1.2, 0.5]]},
+                    "properties": {"type": "room_connection", "room1_id": "R_1"},
+                },
+                {
+                    "type": "Feature",
+                    "geometry": None,
+                    "properties": {"type": "window", "opening_id": 8},
+                },
+            ],
+        }
+        with self.assertLogs("trajectory_generation.geojson_converter", level="WARNING") as logs:
+            scene = convert_connectivity_geojson_payload(payload, scene_id="demo_scene")
+        self.assertEqual(scene["scene"], "demo_scene")
+        self.assertTrue(any("dropped" in line.lower() for line in logs.output))
+
     def test_build_hl3d_geojson_and_convert_to_structural(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)

@@ -142,6 +142,12 @@ class StructuralPrimitivesConverterTest(unittest.TestCase):
             self.assertEqual(parsed.scene, "demo_scene")
             self.assertGreaterEqual(len(parsed.connections), 1)
 
+    def test_rejects_non_finite_numeric_vectors(self) -> None:
+        payload = _base_payload()
+        payload["rooms"][0]["bbox"]["min"] = [0.0, float("nan"), 0.0]
+        with self.assertRaises(ValueError):
+            convert_structural_primitives_payload(payload)
+
 
 if __name__ == "__main__":
     unittest.main()

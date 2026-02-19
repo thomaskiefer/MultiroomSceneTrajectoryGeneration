@@ -12,6 +12,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from trajectory_generation.room_graph import (  # noqa: E402
+    RectPolygon,
     RoomConnection,
     RoomGraph,
     RoomGraphRoomNode,
@@ -156,6 +157,12 @@ class RoomGraphTest(unittest.TestCase):
         )
         with self.assertRaises(KeyError):
             graph.neighbors("missing")
+
+    def test_rectpolygon_rejects_non_finite_bounds(self) -> None:
+        with self.assertRaises(ValueError):
+            RectPolygon((0.0, 0.0), (float("nan"), 1.0))
+        with self.assertRaises(ValueError):
+            RectPolygon((0.0, 0.0), (1.0, float("inf")))
 
 
 if __name__ == "__main__":

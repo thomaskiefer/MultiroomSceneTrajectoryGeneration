@@ -20,9 +20,12 @@ def _parse_vec(value: Any, path: str, size: int) -> np.ndarray:
     if not isinstance(value, (list, tuple)) or len(value) != size:
         raise ValueError(f"Invalid `{path}`: expected list[{size}] of numbers.")
     try:
-        return np.array([float(v) for v in value], dtype=float)
-    except Exception as exc:  # noqa: BLE001
+        vec = np.array([float(v) for v in value], dtype=float)
+    except (TypeError, ValueError) as exc:
         raise ValueError(f"Invalid `{path}`: values must be numeric.") from exc
+    if not np.all(np.isfinite(vec)):
+        raise ValueError(f"Invalid `{path}`: values must be finite (not NaN/Inf).")
+    return vec
 
 
 def _pair_key(room1_id: str, room2_id: str) -> tuple[str, str]:
@@ -384,7 +387,7 @@ def convert_structural_primitives_file(
     opening_room_distance_threshold: float = 3.0,
 ) -> Path:
     """Convert structural-primitives JSON file and write scene.schema.v1 JSON."""
-    payload = json.loads(input_path.read_text())
+    payload = json.loads(input_path.read_text(encoding="utf-8"))
     scene_json = convert_structural_primitives_payload(
         payload=payload,
         scene_id=scene_id,
@@ -392,5 +395,5 @@ def convert_structural_primitives_file(
         opening_room_distance_threshold=opening_room_distance_threshold,
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(scene_json, indent=2))
+    output_path.write_text(json.dumps(scene_json, indent=2), encoding="utf-8")
     return output_path

@@ -3,15 +3,23 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
+logger = logging.getLogger(__name__)
+
 
 def _feature_type(feature: dict[str, Any]) -> str:
-    return str(feature.get("properties", {}).get("type", ""))
+    if not isinstance(feature, dict):
+        return ""
+    props = feature.get("properties", {})
+    if not isinstance(props, dict):
+        return ""
+    return str(props.get("type", ""))
 
 
 def _ring_without_duplicate_close(ring: list[list[float]]) -> list[list[float]]:
@@ -206,30 +214,50 @@ def convert_connectivity_geojson_payload(
         rooms.append(room_payload)
 
     waypoint_by_pair: dict[tuple[str, str], list[list[float]]] = {}
+    dropped_waypoints = 0
     for wp in waypoint_features:
         props = wp.get("properties", {})
+        if not isinstance(props, dict):
+            dropped_waypoints += 1
+            continue
         room1_id = str(props.get("room1_id", "")).strip()
         room2_id = str(props.get("room2_id", "")).strip()
         if not room1_id or not room2_id:
+            dropped_waypoints += 1
             continue
         pair = _pair_key(room1_id, room2_id)
-        coords = wp.get("geometry", {}).get("coordinates")
-        if not coords or len(coords) < 2:
+        geometry = wp.get("geometry", {})
+        if not isinstance(geometry, dict):
+            dropped_waypoints += 1
             continue
-        waypoint = [float(coords[0]), float(coords[1])]
+        coords = geometry.get("coordinates")
+        if not coords or len(coords) < 2:
+            dropped_waypoints += 1
+            continue
+        try:
+            waypoint = [float(coords[0]), float(coords[1])]
+        except (TypeError, ValueError):
+            dropped_waypoints += 1
+            continue
         waypoint_by_pair.setdefault(pair, []).append(waypoint)
 
     connections: list[dict[str, Any]] = []
     seen_pairs: set[tuple[str, str]] = set()
+    dropped_connections = 0
     for conn in conn_features:
         props = conn.get("properties", {})
+        if not isinstance(props, dict):
+            dropped_connections += 1
+            continue
         room1_id = str(props.get("room1_id", "")).strip()
         room2_id = str(props.get("room2_id", "")).strip()
         if not room1_id or not room2_id or room1_id == room2_id:
+            dropped_connections += 1
             continue
 
         pair = _pair_key(room1_id, room2_id)
         if pair in seen_pairs:
+            dropped_connections += 1
             continue
         seen_pairs.add(pair)
 
@@ -251,16 +279,25 @@ def convert_connectivity_geojson_payload(
         connections.append(conn_payload)
 
     openings: list[dict[str, Any]] = []
+    dropped_openings = 0
     for opening in opening_features:
         props = opening.get("properties", {})
+        if not isinstance(props, dict):
+            dropped_openings += 1
+            continue
         geometry = opening.get("geometry", {})
+        if not isinstance(geometry, dict):
+            dropped_openings += 1
+            continue
         opening_type = _feature_type(opening)
         if opening_type not in {"door", "window"}:
+            dropped_openings += 1
             continue
 
         waypoint_xy = _opening_waypoint_xy(geometry)
         bbox = _opening_bbox(geometry, props)
         if waypoint_xy is None and bbox is None:
+            dropped_openings += 1
             continue
 
         item: dict[str, Any] = {"opening_type": opening_type}
@@ -297,6 +334,22 @@ def convert_connectivity_geojson_payload(
             item["wall_id"] = wall_id
         openings.append(item)
 
+    if dropped_waypoints:
+        logger.warning(
+            "Dropped %d malformed door_waypoint feature(s) during GeoJSON conversion.",
+            dropped_waypoints,
+        )
+    if dropped_connections:
+        logger.warning(
+            "Dropped %d malformed/duplicate room_connection feature(s) during GeoJSON conversion.",
+            dropped_connections,
+        )
+    if dropped_openings:
+        logger.warning(
+            "Dropped %d malformed door/window feature(s) during GeoJSON conversion.",
+            dropped_openings,
+        )
+
     output = {
         "schema_version": "scene.schema.v1",
         "scene": scene_id,
@@ -315,11 +368,11 @@ def convert_connectivity_geojson_file(
     scene_id: str | None = None,
 ) -> Path:
     """Convert connectivity GeoJSON file and write canonical scene.schema.v1 JSON."""
-    payload = json.loads(geojson_path.read_text())
+    payload = json.loads(geojson_path.read_text(encoding="utf-8"))
     if not scene_id:
         stem = geojson_path.stem
         scene_id = stem.split("_connectivity")[0]
     scene_json = convert_connectivity_geojson_payload(payload, scene_id=scene_id)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(scene_json, indent=2))
+    output_path.write_text(json.dumps(scene_json, indent=2), encoding="utf-8")
     return output_path

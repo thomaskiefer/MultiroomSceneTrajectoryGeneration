@@ -229,7 +229,6 @@ class CameraPathBuilder:
         """Convert interpolated positions and look targets into camera frames."""
         tangents = np.gradient(smooth_pos, axis=0)
         norms = np.linalg.norm(tangents, axis=1)
-        tangents[norms <= 1e-6] = np.array([1.0, 0.0, 0.0], dtype=float)
 
         last_valid = np.array([1.0, 0.0, 0.0], dtype=float)
         for k in range(len(tangents)):

@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
@@ -96,6 +97,16 @@ class PlotTrajectoryTest(unittest.TestCase):
         self.assertIs(returned_ax, ax)
         plt.close(fig)
 
+    def test_show_look_at_skips_frames_missing_look_at(self) -> None:
+        from trajectory_generation.visualization import plot_trajectory
+
+        frames = [
+            {"id": 0, "position": [0.0, 0.0, 1.6], "look_at": [1.0, 0.0, 1.6]},
+            {"id": 1, "position": [1.0, 0.0, 1.6]},
+        ]
+        ax = plot_trajectory(frames=frames, show_look_at=True)
+        self.assertIsNotNone(ax)
+
 
 @unittest.skipUnless(_HAS_MATPLOTLIB, "matplotlib required")
 class PlotTrajectoryFromArtifactsTest(unittest.TestCase):
@@ -165,6 +176,19 @@ class RichVisualizationBackendTest(unittest.TestCase):
             self.assertTrue(out.exists())
             self.assertGreater(out.stat().st_size, 0)
 
+    def test_parse_features_handles_null_properties(self) -> None:
+        from trajectory_generation.visualization_backend import _parse_features
+
+        payload = {
+            "type": "FeatureCollection",
+            "features": [
+                {"type": "Feature", "properties": None, "geometry": {"type": "Point", "coordinates": [0.0, 0.0]}},
+            ],
+        }
+        parsed = _parse_features(payload)
+        self.assertIn("rooms", parsed)
+        self.assertEqual(sum(len(v) for v in parsed.values()), 0)
+
     @unittest.skipUnless(_HAS_CV2, "opencv required")
     def test_render_trajectory_video_without_forward_key(self) -> None:
         from trajectory_generation.visualization import render_trajectory_video
@@ -212,6 +236,58 @@ class RichVisualizationBackendTest(unittest.TestCase):
             geojson_path, trajectory_path = self._write_minimal_inputs(tmp, frames)
             with self.assertRaises(ValueError):
                 render_trajectory_video(geojson_path, trajectory_path, tmp / "bad.mp4", speed=0.0)
+
+    @unittest.skipUnless(_HAS_CV2, "opencv required")
+    def test_render_trajectory_video_rejects_non_positive_fps(self) -> None:
+        from trajectory_generation.visualization import render_trajectory_video
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            frames = [
+                {
+                    "id": 0,
+                    "position": [0.0, 0.0, 1.6],
+                    "look_at": [1.0, 0.0, 1.6],
+                    "forward": [1.0, 0.0, 0.0],
+                    "up": [0.0, 0.0, 1.0],
+                    "fov": 60.0,
+                }
+            ]
+            geojson_path, trajectory_path = self._write_minimal_inputs(tmp, frames)
+            with self.assertRaises(ValueError):
+                render_trajectory_video(geojson_path, trajectory_path, tmp / "bad_fps.mp4", fps=0)
+
+    @unittest.skipUnless(_HAS_CV2, "opencv required")
+    def test_render_trajectory_video_cleans_temp_file_on_ffmpeg_failure(self) -> None:
+        from trajectory_generation.visualization import render_trajectory_video
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            frames = [
+                {
+                    "id": 0,
+                    "position": [0.0, 0.0, 1.6],
+                    "look_at": [1.0, 0.0, 1.6],
+                    "forward": [1.0, 0.0, 0.0],
+                    "up": [0.0, 0.0, 1.0],
+                    "fov": 60.0,
+                }
+            ]
+            geojson_path, trajectory_path = self._write_minimal_inputs(tmp, frames)
+            out = tmp / "video_fail.mp4"
+            temp_h264 = out.with_suffix(".tmp.mp4")
+
+            class _Proc:
+                returncode = 1
+
+            def _fake_run(cmd, **kwargs):  # noqa: ANN001, ANN003
+                Path(cmd[-1]).write_bytes(b"partial")
+                return _Proc()
+
+            with patch("subprocess.run", side_effect=_fake_run):
+                render_trajectory_video(geojson_path, trajectory_path, out, scene_name="video", speed=1.0, fps=5)
+
+            self.assertFalse(temp_h264.exists())
 
 
 if __name__ == "__main__":

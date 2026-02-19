@@ -329,7 +329,7 @@ def run_structural_json(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     scene_payload = parse_structural_scene_file(scene_input_path)
-    raw_scene_payload = json.loads(scene_input_path.read_text())
+    raw_scene_payload = json.loads(scene_input_path.read_text(encoding="utf-8"))
     scene_name = scene_payload.scene
     floors = scene_payload.floors
     rooms = scene_payload.rooms
@@ -379,6 +379,21 @@ def run_structural_json(
                     raise ValueError("invalid floor footprint polygon")
                 floor_polygons[fi] = poly
             except _GEOM_EXCEPTIONS:
+                warning = (
+                    f"[floor {fi}] Failed to build floor polygon; "
+                    "floor-boundary validation disabled for this floor."
+                )
+                artifacts.warnings.append(warning)
+                logger.warning(
+                    "Failed to build floor polygon for floor %s; floor-boundary validation disabled for this floor.",
+                    fi,
+                )
+            except ValueError:
+                warning = (
+                    f"[floor {fi}] Failed to build floor polygon; "
+                    "floor-boundary validation disabled for this floor."
+                )
+                artifacts.warnings.append(warning)
                 logger.warning(
                     "Failed to build floor polygon for floor %s; floor-boundary validation disabled for this floor.",
                     fi,
@@ -474,6 +489,6 @@ def run_structural_json(
 
     if config.walkthrough.write_debug_summary:
         summary_path = output_dir / f"{scene}_trajectory_generation_summary.json"
-        summary_path.write_text(json.dumps(artifacts.to_dict(), indent=2))
+        summary_path.write_text(json.dumps(artifacts.to_dict(), indent=2), encoding="utf-8")
 
     return artifacts

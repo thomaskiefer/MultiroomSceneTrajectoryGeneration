@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 import json
+import math
 from pathlib import Path
 from typing import Any, Optional
 
@@ -39,6 +40,15 @@ def _validate_choice(field_name: str, value: str, allowed: tuple[str, ...]) -> N
         raise ValueError(f"Invalid `{field_name}`: {value!r}. Allowed values: {allowed_str}.")
 
 
+def _require_finite(field_name: str, value: float) -> None:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"`{field_name}` must be a finite number.") from exc
+    if not math.isfinite(numeric):
+        raise ValueError(f"`{field_name}` must be finite (not NaN/Inf).")
+
+
 @dataclass
 class DatasetConfig:
     """Input dataset paths and scene identity."""
@@ -70,6 +80,29 @@ class FloorplanPipelineConfig:
     include_openings: bool = True
     max_room_floor_distance: float = 4.0
 
+    def __post_init__(self) -> None:
+        _require_finite("height_tolerance", self.height_tolerance)
+        _require_finite("room_height_tolerance", self.room_height_tolerance)
+        _require_finite("room_height_tolerance_above", self.room_height_tolerance_above)
+        _require_finite("min_floor_area", self.min_floor_area)
+        _require_finite("merge_buffer", self.merge_buffer)
+        _require_finite("opening_wall_tolerance", self.opening_wall_tolerance)
+        _require_finite("max_room_floor_distance", self.max_room_floor_distance)
+        if self.height_tolerance <= 0:
+            raise ValueError("`height_tolerance` must be > 0.")
+        if self.room_height_tolerance <= 0:
+            raise ValueError("`room_height_tolerance` must be > 0.")
+        if self.room_height_tolerance_above <= 0:
+            raise ValueError("`room_height_tolerance_above` must be > 0.")
+        if self.min_floor_area <= 0:
+            raise ValueError("`min_floor_area` must be > 0.")
+        if self.merge_buffer < 0:
+            raise ValueError("`merge_buffer` must be >= 0.")
+        if self.opening_wall_tolerance <= 0:
+            raise ValueError("`opening_wall_tolerance` must be > 0.")
+        if self.max_room_floor_distance <= 0:
+            raise ValueError("`max_room_floor_distance` must be > 0.")
+
 
 @dataclass
 class ConnectivityConfig:
@@ -80,6 +113,20 @@ class ConnectivityConfig:
     door_match_tolerance: float = 0.3
     split_hallways_at_doors: bool = True
     hallway_split_length: float = 5.0
+
+    def __post_init__(self) -> None:
+        _require_finite("proximity_threshold", self.proximity_threshold)
+        _require_finite("min_passage_area", self.min_passage_area)
+        _require_finite("door_match_tolerance", self.door_match_tolerance)
+        _require_finite("hallway_split_length", self.hallway_split_length)
+        if self.proximity_threshold <= 0:
+            raise ValueError("`proximity_threshold` must be > 0.")
+        if self.min_passage_area <= 0:
+            raise ValueError("`min_passage_area` must be > 0.")
+        if self.door_match_tolerance <= 0:
+            raise ValueError("`door_match_tolerance` must be > 0.")
+        if self.hallway_split_length <= 0:
+            raise ValueError("`hallway_split_length` must be > 0.")
 
 
 @dataclass
@@ -106,12 +153,8 @@ class WalkthroughBehaviorConfig:
     neighbor_priority_mode: str = "human_like"  # lexicographic | human_like.
     revisit_transition_mode: str = "center_arc"  # center_arc | door_shortcut.
     loop_closure_mode: str = "auto"  # auto | enabled | disabled.
-    prefer_outer_revisit_arc: bool = True  # prefer long arc on revisits for smoother room-perimeter coverage.
     revisit_arc_angle_search_deg: float = 30.0  # [deg] +/- search window around nominal entry/exit angles.
     revisit_arc_search_steps: int = 7  # number of offset samples per angle in search window.
-    revisit_arc_length_weight: float = 0.0  # deprecated/no-op (kept for config compatibility).
-    revisit_arc_outer_bias: float = 0.0  # deprecated/no-op (kept for config compatibility).
-    revisit_arc_max_span_deg: float = 360.0  # deprecated/no-op (kept for config compatibility).
     revisit_arc_max_tangent_mismatch_deg: float = 85.0  # [deg] per-end tangent mismatch gate for arc candidates.
     revisit_arc_reverse_pref_deg: float = 155.0  # [deg] reversal threshold where long arcs are preferred.
     revisit_arc_reverse_long_arc_bonus: float = 0.35  # [rad] score bias favoring long arcs in reversal regime.
@@ -128,6 +171,44 @@ class WalkthroughBehaviorConfig:
     fov: float = 60.0  # [deg] camera horizontal field-of-view.
 
     def __post_init__(self) -> None:
+        int_fields = {
+            "spin_points": self.spin_points,
+            "dense_samples_per_meter": self.dense_samples_per_meter,
+            "dense_samples_base": self.dense_samples_base,
+            "revisit_arc_search_steps": self.revisit_arc_search_steps,
+        }
+        for field_name, value in int_fields.items():
+            if not isinstance(value, int):
+                raise ValueError(f"`{field_name}` must be an integer.")
+
+        numeric_fields = {
+            "spin_look_radius": self.spin_look_radius,
+            "spin_orbit_scale": self.spin_orbit_scale,
+            "spin_segment_speed": self.spin_segment_speed,
+            "travel_speed": self.travel_speed,
+            "door_buffer": self.door_buffer,
+            "lookahead_inside_next_room": self.lookahead_inside_next_room,
+            "max_linear_speed": self.max_linear_speed,
+            "max_angular_speed_deg": self.max_angular_speed_deg,
+            "angular_smoothing_window_s": self.angular_smoothing_window_s,
+            "long_segment_threshold": self.long_segment_threshold,
+            "slow_speed_threshold": self.slow_speed_threshold,
+            "revisit_arc_angle_search_deg": self.revisit_arc_angle_search_deg,
+            "revisit_arc_max_tangent_mismatch_deg": self.revisit_arc_max_tangent_mismatch_deg,
+            "revisit_arc_reverse_pref_deg": self.revisit_arc_reverse_pref_deg,
+            "revisit_arc_reverse_long_arc_bonus": self.revisit_arc_reverse_long_arc_bonus,
+            "revisit_arc_transition_risk_distance_weight": self.revisit_arc_transition_risk_distance_weight,
+            "revisit_arc_transition_risk_angle_weight": self.revisit_arc_transition_risk_angle_weight,
+            "passthrough_speed": self.passthrough_speed,
+            "passthrough_min_turn_deg": self.passthrough_min_turn_deg,
+            "polylabel_tolerance": self.polylabel_tolerance,
+            "polylabel_min_gain": self.polylabel_min_gain,
+            "min_speed_clamp": self.min_speed_clamp,
+            "fov": self.fov,
+        }
+        for field_name, num_value in numeric_fields.items():
+            _require_finite(field_name, num_value)
+
         _validate_choice("look_at_mode", self.look_at_mode, SUPPORTED_LOOK_AT_MODES)
         _validate_choice(
             "disconnected_transition_mode",
@@ -174,12 +255,6 @@ class WalkthroughBehaviorConfig:
             raise ValueError("`revisit_arc_angle_search_deg` must be in [0, 180).")
         if self.revisit_arc_search_steps < 1:
             raise ValueError("`revisit_arc_search_steps` must be >= 1.")
-        if self.revisit_arc_length_weight < 0:
-            raise ValueError("`revisit_arc_length_weight` must be >= 0.")
-        if self.revisit_arc_outer_bias < 0:
-            raise ValueError("`revisit_arc_outer_bias` must be >= 0.")
-        if self.revisit_arc_max_span_deg <= 0 or self.revisit_arc_max_span_deg > 360:
-            raise ValueError("`revisit_arc_max_span_deg` must be in (0, 360].")
         if self.revisit_arc_max_tangent_mismatch_deg <= 0 or self.revisit_arc_max_tangent_mismatch_deg >= 180:
             raise ValueError("`revisit_arc_max_tangent_mismatch_deg` must be in (0, 180).")
         if self.revisit_arc_reverse_pref_deg < 0 or self.revisit_arc_reverse_pref_deg >= 180:
@@ -242,8 +317,11 @@ class WalkthroughConfig:
     viz: TrajectoryVisualizationConfig = field(default_factory=TrajectoryVisualizationConfig)
 
     def __post_init__(self) -> None:
+        _require_finite("camera_height", self.camera_height)
         if self.fps <= 0:
             raise ValueError("`fps` must be > 0.")
+        if self.camera_height <= 0:
+            raise ValueError("`camera_height` must be > 0.")
 
 
 @dataclass
@@ -363,8 +441,6 @@ class TrajectoryGenerationConfig:
             raise ValueError(f"Invalid `connectivity` config keys: {exc}") from exc
         behavior_raw = dict(walkthrough_raw.pop("behavior", {}))
         viz_raw = dict(walkthrough_raw.pop("viz", {}))
-        # Backward compatibility with earlier config payloads.
-        walkthrough_raw.pop("output_format", None)
         if behavior_raw:
             try:
                 walkthrough_raw["behavior"] = WalkthroughBehaviorConfig(**behavior_raw)

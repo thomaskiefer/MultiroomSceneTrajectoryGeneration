@@ -190,6 +190,41 @@ class StructuralJsonAdapterTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 run_structural_json(cfg, project_root=root)
 
+    def test_floor_polygon_build_failure_is_added_to_artifact_warnings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            scene_json = self._write_scene(
+                root,
+                {
+                    "scene": "scene_struct",
+                    "floors": [
+                        {
+                            "floor_index": 0,
+                            "z": 0.0,
+                            "footprint_xy": [[0, 0], [10, 0], [10, 10], [0, 10]],
+                        }
+                    ],
+                    "rooms": [
+                        {
+                            "room_id": "r1",
+                            "floor_index": 0,
+                            "semantic": "entryway",
+                            "bbox": {"min": [0, 0, 0], "max": [2, 2, 3]},
+                        }
+                    ],
+                },
+            )
+            cfg = TrajectoryGenerationConfig.structural_json(
+                scene_input_json=scene_json,
+                output_dir=Path("outputs"),
+                dataset_root=root,
+            )
+            with patch.object(structural_json, "ShapelyPolygon", side_effect=ValueError("bad floor polygon")):
+                artifacts = run_structural_json(cfg, project_root=root)
+            self.assertTrue(
+                any("failed to build floor polygon" in warning.lower() for warning in artifacts.warnings)
+            )
+
     def test_no_rooms_or_floors_raises_value_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)

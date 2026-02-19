@@ -47,6 +47,7 @@ class LocalWalkthroughGenerator:
         self.last_validation_warnings: list[str] = []
         self.last_skipped_disconnected_rooms: list[str] = []
         self.last_disconnected_component_count: int = 1
+        self._room_center_cache: dict[str, np.ndarray] = {}
 
         self._connection_lookup: dict[frozenset[str], Any] = {}
         for conn in getattr(self.graph, "connections", []):
@@ -292,7 +293,8 @@ class LocalWalkthroughGenerator:
             if start_tangent is not None:
                 closure_dist = float(np.linalg.norm(start_pos - end_pos))
                 if closure_dist > 0.15:
-                    anchor_dist = float(np.clip(0.18, 0.10, 0.5 * closure_dist))
+                    anchor_max = max(0.10, 0.5 * closure_dist)
+                    anchor_dist = float(np.clip(0.18, 0.10, anchor_max))
                     anchor_pos = start_pos - start_tangent * anchor_dist
                     if float(np.linalg.norm(end_pos - anchor_pos)) > 1e-3:
                         look_offset = start_look - start_pos
@@ -315,106 +317,6 @@ class LocalWalkthroughGenerator:
             segment_speeds=np.asarray(seg_speeds, dtype=float),
         )
 
-    @staticmethod
-    def _normalize_xy(vec: np.ndarray) -> Optional[np.ndarray]:
-        v = np.asarray(vec[:2], dtype=float)
-        norm = float(np.linalg.norm(v))
-        if norm <= 1e-9:
-            return None
-        return v / norm
-
-    @staticmethod
-    def _angle_cost_xy(a: np.ndarray, b: np.ndarray) -> float:
-        dot = float(np.clip(np.dot(a, b), -1.0, 1.0))
-        return float(np.arccos(dot))
-
-    def _append_circular_loop_closure(
-        self,
-        cp_pos: list[np.ndarray],
-        cp_look: list[np.ndarray],
-        seg_speeds: list[float],
-        start_pos: np.ndarray,
-        start_look: np.ndarray,
-    ) -> bool:
-        """
-        Append loop closure by following the start-room orbit arc.
-        This avoids linear shortcuts across the room when closure geometry is recoverable.
-        """
-        if self.behavior.revisit_transition_mode != "center_arc":
-            return False
-        if len(cp_pos) < 2 or self.behavior.spin_orbit_scale <= 1e-9:
-            return False
-
-        s = float(self.behavior.spin_orbit_scale)
-        look_delta = np.asarray(start_look[:2] - start_pos[:2], dtype=float)
-        if float(np.linalg.norm(look_delta)) <= 1e-6:
-            return False
-
-        center_xy = np.asarray(start_pos[:2], dtype=float) + (s / (1.0 + s)) * look_delta
-        orbit_radius = float(np.linalg.norm(np.asarray(start_pos[:2], dtype=float) - center_xy))
-        look_radius = float(np.linalg.norm(np.asarray(start_look[:2], dtype=float) - center_xy))
-        if orbit_radius <= 1e-6 or look_radius <= 1e-6:
-            return False
-
-        end_pos = np.asarray(cp_pos[-1], dtype=float)
-        end_radius = float(np.linalg.norm(end_pos[:2] - center_xy))
-        if abs(end_radius - orbit_radius) > max(0.15, 0.6 * orbit_radius):
-            return False
-
-        start_angle = float(np.arctan2(start_pos[1] - center_xy[1], start_pos[0] - center_xy[0]))
-        end_angle = float(np.arctan2(end_pos[1] - center_xy[1], end_pos[0] - center_xy[0]))
-        delta_short = float((start_angle - end_angle + np.pi) % (2.0 * np.pi) - np.pi)
-        if abs(delta_short) < 1e-6:
-            cp_pos.append(start_pos.copy())
-            cp_look.append(start_look.copy())
-            seg_speeds.append(float(self.behavior.travel_speed))
-            return True
-
-        # Candidate arcs: short and complementary long.
-        delta_long = float(delta_short - np.sign(delta_short) * (2.0 * np.pi))
-        candidates = [delta_short, delta_long]
-
-        incoming_dir = None
-        if len(cp_pos) >= 2:
-            incoming_dir = self._normalize_xy(cp_pos[-1] - cp_pos[-2])
-        start_dir = self._normalize_xy(cp_pos[1] - cp_pos[0])
-
-        def _score(delta: float) -> float:
-            sign = 1.0 if delta >= 0.0 else -1.0
-            tangent_entry = np.array(
-                [sign * -np.sin(end_angle), sign * np.cos(end_angle)],
-                dtype=float,
-            )
-            tangent_exit = np.array(
-                [sign * -np.sin(start_angle), sign * np.cos(start_angle)],
-                dtype=float,
-            )
-            score = 0.0
-            if incoming_dir is not None:
-                score += self._angle_cost_xy(incoming_dir, tangent_entry)
-            if start_dir is not None:
-                score += self._angle_cost_xy(tangent_exit, start_dir)
-            score += 0.02 * abs(delta)
-            return score
-
-        best_delta = min(candidates, key=_score)
-        num_arc_points = max(2, int(np.ceil(abs(best_delta) / (2.0 * np.pi) * max(8, self.behavior.spin_points))))
-        angles = np.linspace(end_angle, end_angle + best_delta, num_arc_points + 1)[1:]
-
-        z_pos = float(start_pos[2])
-        z_look = float(start_look[2])
-        for angle in angles:
-            cam_xy = center_xy + orbit_radius * np.array([np.cos(angle), np.sin(angle)], dtype=float)
-            look_xy = center_xy + look_radius * np.array([np.cos(angle), np.sin(angle)], dtype=float)
-            cp_pos.append(np.array([cam_xy[0], cam_xy[1], z_pos], dtype=float))
-            cp_look.append(np.array([look_xy[0], look_xy[1], z_look], dtype=float))
-            seg_speeds.append(float(self.behavior.travel_speed))
-
-        # Ensure exact closure at final control point.
-        cp_pos[-1] = start_pos.copy()
-        cp_look[-1] = start_look.copy()
-        return True
-
     def _reindex_frames(self, frames: list[dict[str, Any]], id_offset: int) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
         for i, frame in enumerate(frames):
@@ -425,6 +327,10 @@ class LocalWalkthroughGenerator:
 
     def _get_room_center(self, room_id: str) -> np.ndarray:
         """Get room center, preferring POI unless centroid is nearly as good."""
+        cached = self._room_center_cache.get(room_id)
+        if cached is not None:
+            return cached.copy()
+
         room, poly = self.graph.rooms[room_id]
         centroid_xy = np.array([room.centroid[0], room.centroid[1]], dtype=float)
 
@@ -449,23 +355,31 @@ class LocalWalkthroughGenerator:
                             pole_clearance = float(poly.boundary.distance(pole))
                             centroid_clearance = float(poly.boundary.distance(centroid_pt))
                             if (pole_clearance - centroid_clearance) < self.behavior.polylabel_min_gain:
-                                return np.array([centroid_pt.x, centroid_pt.y, self.eye_level])
+                                center = np.array([centroid_pt.x, centroid_pt.y, self.eye_level])
+                                self._room_center_cache[room_id] = center
+                                return center.copy()
                 except _GEOM_EXCEPTIONS:
                     logger.debug("clearance comparison failed for room %s; using polylabel.", room_id)
-                return np.array([pole.x, pole.y, self.eye_level])
+                center = np.array([pole.x, pole.y, self.eye_level])
+                self._room_center_cache[room_id] = center
+                return center.copy()
             except _GEOM_EXCEPTIONS:
                 logger.warning("polylabel failed for room %s; falling back.", room_id, exc_info=True)
 
         try:
             pt = poly.representative_point()
-            return np.array([pt.x, pt.y, self.eye_level])
+            center = np.array([pt.x, pt.y, self.eye_level])
+            self._room_center_cache[room_id] = center
+            return center.copy()
         except _GEOM_EXCEPTIONS:
             logger.warning(
                 "representative_point failed for room %s; using room centroid.",
                 room_id,
                 exc_info=True,
             )
-            return np.array([centroid_xy[0], centroid_xy[1], self.eye_level])
+            center = np.array([centroid_xy[0], centroid_xy[1], self.eye_level])
+            self._room_center_cache[room_id] = center
+            return center.copy()
 
     def _get_door_normal(self, waypoint: Any) -> np.ndarray:
         """Calculate doorway normal for perpendicular crossing preference."""
@@ -531,12 +445,6 @@ class LocalWalkthroughGenerator:
 
     def _wrap_angle_delta(self, delta: np.ndarray | float) -> np.ndarray | float:
         return self._camera_builder._wrap_angle_delta(delta)
-
-    def _smooth_headings(self, headings: np.ndarray, fps: int) -> np.ndarray:
-        return self._camera_builder._smooth_headings(headings, fps)
-
-    def _apply_heading_constraints(self, forward_vectors: np.ndarray, fps: int) -> np.ndarray:
-        return self._camera_builder.apply_heading_constraints(forward_vectors, fps)
 
     def _interpolate_path(
         self,

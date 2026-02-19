@@ -11,7 +11,9 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from trajectory_generation.config import (
+    ConnectivityConfig,
     DatasetConfig,
+    FloorplanPipelineConfig,
     TrajectoryGenerationConfig,
     WalkthroughBehaviorConfig,
     WalkthroughConfig,
@@ -43,10 +45,8 @@ class TrajectoryGenerationConfigTest(unittest.TestCase):
         self.assertEqual(cfg.walkthrough.behavior.neighbor_priority_mode, "human_like")
         self.assertEqual(cfg.walkthrough.behavior.revisit_transition_mode, "center_arc")
         self.assertEqual(cfg.walkthrough.behavior.loop_closure_mode, "auto")
-        self.assertTrue(cfg.walkthrough.behavior.prefer_outer_revisit_arc)
         self.assertEqual(cfg.walkthrough.behavior.revisit_arc_angle_search_deg, 30.0)
         self.assertEqual(cfg.walkthrough.behavior.revisit_arc_search_steps, 7)
-        self.assertEqual(cfg.walkthrough.behavior.revisit_arc_max_span_deg, 360.0)
         self.assertEqual(cfg.walkthrough.behavior.revisit_arc_reverse_pref_deg, 155.0)
         self.assertEqual(cfg.walkthrough.behavior.revisit_arc_reverse_long_arc_bonus, 0.35)
         self.assertEqual(cfg.walkthrough.behavior.revisit_arc_transition_risk_distance_weight, 0.35)
@@ -207,7 +207,7 @@ class TrajectoryGenerationConfigTest(unittest.TestCase):
                 }
             )
 
-    def test_from_dict_ignores_legacy_output_format_field(self) -> None:
+    def test_from_dict_rejects_legacy_output_format_field(self) -> None:
         payload = {
             "dataset": {"dataset_root": "/tmp/data", "scene": "s"},
             "walkthrough": {
@@ -215,8 +215,8 @@ class TrajectoryGenerationConfigTest(unittest.TestCase):
                 "output_format": "npz",
             },
         }
-        loaded = TrajectoryGenerationConfig.from_dict(payload)
-        self.assertEqual(loaded.walkthrough.output_dir, Path("outputs/x"))
+        with self.assertRaisesRegex(ValueError, "Invalid `walkthrough` config keys"):
+            TrajectoryGenerationConfig.from_dict(payload)
 
     def test_rejects_invalid_motion_constraints(self) -> None:
         with self.assertRaises(ValueError):
@@ -241,14 +241,6 @@ class TrajectoryGenerationConfigTest(unittest.TestCase):
             WalkthroughBehaviorConfig(revisit_arc_angle_search_deg=180.0)
         with self.assertRaises(ValueError):
             WalkthroughBehaviorConfig(revisit_arc_search_steps=0)
-        with self.assertRaises(ValueError):
-            WalkthroughBehaviorConfig(revisit_arc_length_weight=-0.1)
-        with self.assertRaises(ValueError):
-            WalkthroughBehaviorConfig(revisit_arc_outer_bias=-0.1)
-        with self.assertRaises(ValueError):
-            WalkthroughBehaviorConfig(revisit_arc_max_span_deg=0.0)
-        with self.assertRaises(ValueError):
-            WalkthroughBehaviorConfig(revisit_arc_max_span_deg=361.0)
         with self.assertRaises(ValueError):
             WalkthroughBehaviorConfig(revisit_arc_reverse_pref_deg=180.0)
         with self.assertRaises(ValueError):
@@ -275,6 +267,24 @@ class TrajectoryGenerationConfigTest(unittest.TestCase):
             WalkthroughBehaviorConfig(fov=180.0)
         with self.assertRaises(ValueError):
             WalkthroughConfig(fps=0)
+        with self.assertRaises(ValueError):
+            WalkthroughConfig(camera_height=0.0)
+        with self.assertRaises(ValueError):
+            WalkthroughConfig(camera_height=float("nan"))
+        with self.assertRaises(ValueError):
+            WalkthroughBehaviorConfig(travel_speed=float("nan"))
+        with self.assertRaises(ValueError):
+            WalkthroughBehaviorConfig(spin_points=2.5)
+
+    def test_rejects_non_finite_floorplan_and_connectivity_values(self) -> None:
+        with self.assertRaises(ValueError):
+            FloorplanPipelineConfig(min_floor_area=float("nan"))
+        with self.assertRaises(ValueError):
+            FloorplanPipelineConfig(max_room_floor_distance=float("inf"))
+        with self.assertRaises(ValueError):
+            ConnectivityConfig(proximity_threshold=float("nan"))
+        with self.assertRaises(ValueError):
+            ConnectivityConfig(hallway_split_length=float("-inf"))
 
 
 if __name__ == "__main__":

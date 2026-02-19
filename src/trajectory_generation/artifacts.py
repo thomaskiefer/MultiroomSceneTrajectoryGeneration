@@ -72,5 +72,5 @@ def write_trajectory_frames(
     """Serialize trajectory frames into JSON."""
     output_path = output_path_stem.with_suffix(".json")
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(frames, indent=2))
+    output_path.write_text(json.dumps(frames, indent=2), encoding="utf-8")
     return output_path

@@ -25,6 +25,14 @@ from trajectory_generation.scene_geojson import build_connectivity_geojson_from_
 from trajectory_generation.visualization import render_trajectory_image, render_trajectory_video  # noqa: E402
 
 
+def _is_ancestor_path(ancestor: Path, child: Path) -> bool:
+    try:
+        child.relative_to(ancestor)
+        return True
+    except ValueError:
+        return False
+
+
 @dataclass(frozen=True)
 class SampleCase:
     scene_input: Path
@@ -67,10 +75,10 @@ def main() -> None:
 
     project_root = args.project_root.resolve()
     output_root = args.output_root if args.output_root.is_absolute() else (project_root / args.output_root).resolve()
-    if output_root == project_root:
+    if output_root == project_root or _is_ancestor_path(output_root, project_root):
         raise ValueError(
-            f"Refusing to use project root as output_root: {output_root}. "
-            "Choose a subdirectory (for example `samples`)."
+            f"Refusing unsafe output_root for cleanup: {output_root}. "
+            "Output root must not be the project root or any of its ancestors."
         )
 
     if not args.no_clean and output_root.exists():

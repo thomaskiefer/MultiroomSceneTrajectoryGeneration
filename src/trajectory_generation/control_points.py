@@ -362,8 +362,6 @@ class ControlPointPlanner:
 
         # Reuse the same nominal orbit radius as first-visit spins so revisit
         # arcs stay on the same room-centered trajectory family.
-        radius_eff = radius
-
         num_arc_points = max(3, int(np.ceil(abs_delta / (2 * np.pi) * self.behavior.spin_points)))
         angles = np.linspace(entry_angle, entry_angle + delta, num_arc_points + 1)
 
@@ -371,8 +369,8 @@ class ControlPointPlanner:
             seg_speeds.append(self.behavior.travel_speed)
 
         for k, angle in enumerate(angles):
-            dx = radius_eff * np.cos(angle)
-            dy = radius_eff * np.sin(angle)
+            dx = radius * np.cos(angle)
+            dy = radius * np.sin(angle)
             look_target = center_pos + np.array([dx, dy, 0.0])
             orbit_offset = np.array([-dx, -dy, 0.0]) * orbit_scale
             cam_pos = center_pos + orbit_offset
@@ -502,9 +500,6 @@ class ControlPointPlanner:
         new_looks.append(mid_transfer + transfer_dir)
         new_points.append(next_center)
         new_looks.append(next_center + transfer_dir)
-
-        if not new_points:
-            return
 
         start_cp_idx = len(cp_pos)
         if len(cp_pos) > 0:
@@ -651,10 +646,6 @@ class ControlPointPlanner:
                 dtype=float,
             )
 
-        def _angle_cost(a: np.ndarray, b: np.ndarray) -> float:
-            dot = float(np.clip(np.dot(a, b), -1.0, 1.0))
-            return float(np.arccos(dot))
-
         def _score(sign: float) -> float:
             tangent = np.array(
                 [sign * np.sin(start_angle), -sign * np.cos(start_angle)],
@@ -665,9 +656,9 @@ class ControlPointPlanner:
                 tangent /= tangent_norm
             score = 0.0
             if incoming_dir is not None:
-                score += _angle_cost(tangent, incoming_dir)
+                score += self._angle_cost(tangent, incoming_dir)
             if outgoing_dir is not None:
-                score += _angle_cost(tangent, outgoing_dir)
+                score += self._angle_cost(tangent, outgoing_dir)
             return score
 
         ccw = _score(1.0)
@@ -768,11 +759,7 @@ class ControlPointPlanner:
                         short_candidates = [delta_short]
                         long_candidates = [float(delta_short - np.sign(delta_short) * (2.0 * np.pi))]
 
-                    candidate_deltas: list[float] = []
-                    candidate_deltas.extend(long_candidates)
-                    candidate_deltas.extend(short_candidates)
-                    if not candidate_deltas:
-                        continue
+                    candidate_deltas = [*long_candidates, *short_candidates]
 
                     exit_cam = center_xy + orbit_radius * np.array(
                         [-np.cos(exit_angle), -np.sin(exit_angle)],
@@ -793,22 +780,16 @@ class ControlPointPlanner:
                     for delta in candidate_deltas:
                         is_long_arc = abs(delta) > (np.pi + 1e-6)
                         sign = 1.0 if delta >= 0.0 else -1.0
-                        start_tangent_vec = np.array(
+                        start_tangent = np.array(
                             [sign * np.sin(entry_angle), -sign * np.cos(entry_angle)],
                             dtype=float,
                         )
-                        start_tangent = self._normalize_dir(start_tangent_vec)
-                        if start_tangent is None:
-                            continue
 
                         end_angle = entry_angle + delta
-                        end_tangent_vec = np.array(
+                        end_tangent = np.array(
                             [sign * np.sin(end_angle), -sign * np.cos(end_angle)],
                             dtype=float,
                         )
-                        end_tangent = self._normalize_dir(end_tangent_vec)
-                        if end_tangent is None:
-                            continue
 
                         mismatch_in = 0.0
                         if incoming_dir is not None:
@@ -819,9 +800,13 @@ class ControlPointPlanner:
                             mismatch_out = self._angle_cost(end_tangent, outgoing_dir)
 
                         valid = mismatch_in <= mismatch_max and mismatch_out <= mismatch_max
-                        score = mismatch_in + mismatch_out
+                        # Keep inbound mismatch as the base term and model exit
+                        # mismatch with an explicit combined weight:
+                        #   1.0 (base smoothness) + risk_angle_weight (exit risk)
+                        # This is equivalent to the previous additive form while
+                        # making the intent unambiguous.
+                        score = mismatch_in + (1.0 + risk_angle_weight) * mismatch_out
                         score += risk_distance_weight * normalized_exit_distance
-                        score += risk_angle_weight * mismatch_out
                         if reverse_regime and reverse_long_bonus > 0.0:
                             arc_bias = reverse_long_bonus * (1.0 + reversal_strength)
                             if is_long_arc:

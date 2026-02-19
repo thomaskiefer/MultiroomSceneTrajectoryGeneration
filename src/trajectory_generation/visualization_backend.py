@@ -96,7 +96,12 @@ def _parse_features(gj: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     }
     out: dict[str, list[dict[str, Any]]] = {v: [] for v in _MAP.values()}
     for f in gj.get("features", []):
-        key = _MAP.get(f["properties"].get("type", ""))
+        if not isinstance(f, dict):
+            continue
+        props = f.get("properties")
+        if not isinstance(props, dict):
+            props = {}
+        key = _MAP.get(str(props.get("type", "")))
         if key:
             out[key].append(f)
     return out
@@ -603,6 +608,8 @@ def render_trajectory_video(
 
     if speed <= 0:
         raise ValueError("`speed` must be > 0.")
+    if fps <= 0:
+        raise ValueError("`fps` must be > 0.")
 
     gj = _load(geojson_path)
     frames = _load(trajectory_path)
@@ -783,6 +790,12 @@ def render_trajectory_video(
         logger.warning("ffmpeg not found; keeping original mp4 without H264 re-encode.")
     except Exception as exc:
         logger.warning("ffmpeg re-encode failed with unexpected error: %s", exc)
+    finally:
+        if h264_path.exists():
+            try:
+                h264_path.unlink()
+            except OSError as exc:
+                logger.warning("Could not remove temporary file %s: %s", h264_path, exc)
 
     logger.info("Saved trajectory video to %s", output_path)
     return output_path

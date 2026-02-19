@@ -80,6 +80,22 @@ class CatmullRomSplineTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             CatmullRomSpline(np.array([[0.0, 1.0], [2.0, 3.0]]))
 
+    def test_interpolate_segment_degenerate_fallback_prefers_later_points(self) -> None:
+        spline = CatmullRomSpline(np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]))
+        t_values = np.array([0.0, 0.0], dtype=float)
+        out = spline._interpolate_segment_batch(
+            p0=np.array([0.0, 0.0, 0.0]),
+            p1=np.array([1.0, 0.0, 0.0]),
+            p2=np.array([2.0, 0.0, 0.0]),
+            p3=np.array([3.0, 0.0, 0.0]),
+            t0=0.0,
+            t1=0.0,
+            t2=0.0,
+            t3=0.0,
+            t_values=t_values,
+        )
+        self.assertTrue(np.allclose(out, np.array([[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]]), atol=1e-9))
+
 
 if __name__ == "__main__":
     unittest.main()

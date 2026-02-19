@@ -116,8 +116,10 @@ def plot_trajectory(
         step = max(1, len(positions) // cfg.max_arrows)
         for i in range(0, len(frames), step):
             frame = frames[i]
-            pos = np.array(frame["position"][:2])
-            target = np.array(frame["look_at"][:2])
+            if "position" not in frame or "look_at" not in frame:
+                continue
+            pos = np.array(frame["position"][:2], dtype=float)
+            target = np.array(frame["look_at"][:2], dtype=float)
             direction = target - pos
             norm = np.linalg.norm(direction)
             if norm > 0.01:
@@ -178,7 +180,7 @@ def plot_trajectory_from_artifacts(
             logger.warning("Trajectory file not found: %s", frames_path)
             continue
 
-        frames = json.loads(frames_path.read_text())
+        frames = json.loads(frames_path.read_text(encoding="utf-8"))
         out = frames_path.with_name(frames_path.stem + "_visualization.png")
 
         plot_trajectory(

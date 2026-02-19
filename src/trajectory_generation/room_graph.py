@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Any, Optional, Protocol
 
 import numpy as np
@@ -66,6 +67,13 @@ class RectPolygon:
         self.min_y = float(min_xy[1])
         self.max_x = float(max_xy[0])
         self.max_y = float(max_xy[1])
+        if not all(
+            math.isfinite(v)
+            for v in (self.min_x, self.min_y, self.max_x, self.max_y)
+        ):
+            raise ValueError(
+                "Invalid RectPolygon bounds: all min/max values must be finite (not NaN/Inf)."
+            )
         if self.max_x < self.min_x or self.max_y < self.min_y:
             raise ValueError(
                 "Invalid RectPolygon bounds: max_xy must be >= min_xy for both x and y."

@@ -56,6 +56,10 @@ def validate_trajectory(
         and ShapelyPoint is not None
         and hasattr(floor_polygon, "covers")
     )
+    if floor_polygon is not None and ShapelyPoint is None:
+        warnings.append("Floor-boundary validation skipped: shapely is not installed.")
+    elif floor_polygon is not None and not hasattr(floor_polygon, "covers"):
+        warnings.append("Floor-boundary validation skipped: floor polygon object lacks a `covers` method.")
 
     for frame in frames:
         position = _as_vec3(frame, "position")

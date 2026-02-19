@@ -313,7 +313,7 @@ def _parse_structural_payload(payload: dict[str, Any]) -> StructuralScene:
 
 def parse_structural_scene_file(scene_path: Path) -> StructuralScene:
     try:
-        payload = json.loads(scene_path.read_text())
+        payload = json.loads(scene_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise ValueError(f"Invalid structural scene JSON at {scene_path}: {exc}") from exc
     _expect_type(payload, dict, "root")

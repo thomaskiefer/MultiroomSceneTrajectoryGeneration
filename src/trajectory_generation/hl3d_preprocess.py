@@ -289,7 +289,7 @@ def _inject_trajectory_centers_into_geojson(
     center_map_by_floor: dict[int, dict[str, np.ndarray]],
 ) -> None:
     """Persist trajectory room centers in GeoJSON for downstream visualization."""
-    payload = json.loads(geojson_path.read_text())
+    payload = json.loads(geojson_path.read_text(encoding="utf-8"))
     features = payload.get("features", [])
     if not isinstance(features, list):
         return
@@ -333,7 +333,7 @@ def _inject_trajectory_centers_into_geojson(
     if center_features:
         features.extend(center_features)
         payload["features"] = features
-        geojson_path.write_text(json.dumps(payload, indent=2))
+        geojson_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def _write_floor_geojson_files(
@@ -362,7 +362,7 @@ def _write_floor_geojson_files(
             floor_graphs,
         )
         floor_path = output_dir / f"{context.scene}_floor_{floor_idx}.geojson"
-        floor_path.write_text(json.dumps(payload, indent=2))
+        floor_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         outputs.append(floor_path)
     return tuple(outputs)
 
@@ -419,7 +419,7 @@ def _write_diagnostics_artifacts(
         "unmatched_opening_ids": list(context.unmatched_opening_ids),
         "matched_to_floor_not_wall_opening_ids": list(context.matched_to_floor_not_wall_opening_ids),
     }
-    diagnostics_path.write_text(json.dumps(diagnostics_payload, indent=2))
+    diagnostics_path.write_text(json.dumps(diagnostics_payload, indent=2), encoding="utf-8")
 
     room_stats_csv: Optional[Path] = None
     if hasattr(export_mod, "export_room_matching_stats") and context.rooms_by_floor:
@@ -719,7 +719,7 @@ def _inject_hl3d_metadata_into_structural_scene(
     structural_scene_path: Path,
     context: Hl3dPreprocessContext,
 ) -> None:
-    payload = json.loads(structural_scene_path.read_text())
+    payload = json.loads(structural_scene_path.read_text(encoding="utf-8"))
 
     context_openings = _serialize_openings_from_context(context)
     existing_openings = payload.get("openings", [])
@@ -746,7 +746,7 @@ def _inject_hl3d_metadata_into_structural_scene(
     if stairs:
         payload["stairs"] = stairs
 
-    structural_scene_path.write_text(json.dumps(payload, indent=2))
+    structural_scene_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def _compute_trajectory_room_centers(

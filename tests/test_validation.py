@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 import sys
 
 
@@ -9,6 +10,7 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+import trajectory_generation.validation as validation_module
 from trajectory_generation.validation import validate_trajectory
 
 try:
@@ -136,6 +138,21 @@ class ValidationTest(unittest.TestCase):
         self.assertIn("nan/inf", combined)
         self.assertNotIn("non-unit forward", combined)
         self.assertNotIn("not perpendicular", combined)
+
+    def test_floor_validation_warns_when_shapely_unavailable(self) -> None:
+        frames = [
+            {
+                "id": 0,
+                "position": [0.0, 0.0, 1.6],
+                "look_at": [1.0, 0.0, 1.6],
+                "forward": [1.0, 0.0, 0.0],
+                "up": [0.0, 0.0, 1.0],
+                "fov": 60.0,
+            }
+        ]
+        with patch.object(validation_module, "ShapelyPoint", None):
+            warnings = validate_trajectory(frames, floor_polygon=object())
+        self.assertTrue(any("shapely is not installed" in w.lower() for w in warnings))
 
 
 if __name__ == "__main__":

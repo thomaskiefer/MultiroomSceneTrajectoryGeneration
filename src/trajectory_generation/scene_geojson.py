@@ -210,7 +210,7 @@ def build_connectivity_geojson_from_structural_scene(
     config: TrajectoryGenerationConfig,
 ) -> Path:
     """Build connectivity GeoJSON aligned with trajectory-center logic."""
-    raw_payload = json.loads(scene_input.read_text())
+    raw_payload = json.loads(scene_input.read_text(encoding="utf-8"))
     payload = parse_structural_scene_file(scene_input)
     floors = payload.floors
     rooms = payload.rooms
@@ -364,5 +364,5 @@ def build_connectivity_geojson_from_structural_scene(
         geojson_payload["metadata"] = {"stairs": stairs_metadata}
 
     geojson_output.parent.mkdir(parents=True, exist_ok=True)
-    geojson_output.write_text(json.dumps(geojson_payload, indent=2))
+    geojson_output.write_text(json.dumps(geojson_payload, indent=2), encoding="utf-8")
     return geojson_output

@@ -374,6 +374,6 @@ def run_houselayout3d_matterport(
 
     if config.walkthrough.write_debug_summary:
         summary_path = output_dir / f"{scene}_trajectory_generation_summary.json"
-        summary_path.write_text(json.dumps(artifacts.to_dict(), indent=2))
+        summary_path.write_text(json.dumps(artifacts.to_dict(), indent=2), encoding="utf-8")
 
     return artifacts
