@@ -16,6 +16,7 @@ SUPPORTED_DISCONNECTED_COMPONENT_POLICIES = ("largest_component_only", "all_comp
 SUPPORTED_NEIGHBOR_PRIORITY_MODES = ("lexicographic", "human_like")
 SUPPORTED_REVISIT_TRANSITION_MODES = ("center_arc", "door_shortcut")
 SUPPORTED_LOOP_CLOSURE_MODES = ("auto", "enabled", "disabled")
+SUPPORTED_FIRST_VISIT_ROOM_MOTION_MODES = ("full_spin", "turn_arc")
 
 
 def _path_or_none(value: Optional[str | Path]) -> Optional[Path]:
@@ -153,6 +154,8 @@ class WalkthroughBehaviorConfig:
     neighbor_priority_mode: str = "human_like"  # lexicographic | human_like.
     revisit_transition_mode: str = "center_arc"  # center_arc | door_shortcut.
     loop_closure_mode: str = "auto"  # auto | enabled | disabled.
+    first_visit_room_motion_mode: str = "full_spin"  # full_spin | turn_arc.
+    first_visit_arc_trigger_deg: float = 150.0  # [deg] minimum turn magnitude before first-visit arc is used.
     revisit_arc_angle_search_deg: float = 30.0  # [deg] +/- search window around nominal entry/exit angles.
     revisit_arc_search_steps: int = 7  # number of offset samples per angle in search window.
     revisit_arc_max_tangent_mismatch_deg: float = 85.0  # [deg] per-end tangent mismatch gate for arc candidates.
@@ -193,6 +196,7 @@ class WalkthroughBehaviorConfig:
             "angular_smoothing_window_s": self.angular_smoothing_window_s,
             "long_segment_threshold": self.long_segment_threshold,
             "slow_speed_threshold": self.slow_speed_threshold,
+            "first_visit_arc_trigger_deg": self.first_visit_arc_trigger_deg,
             "revisit_arc_angle_search_deg": self.revisit_arc_angle_search_deg,
             "revisit_arc_max_tangent_mismatch_deg": self.revisit_arc_max_tangent_mismatch_deg,
             "revisit_arc_reverse_pref_deg": self.revisit_arc_reverse_pref_deg,
@@ -235,6 +239,11 @@ class WalkthroughBehaviorConfig:
             self.loop_closure_mode,
             SUPPORTED_LOOP_CLOSURE_MODES,
         )
+        _validate_choice(
+            "first_visit_room_motion_mode",
+            self.first_visit_room_motion_mode,
+            SUPPORTED_FIRST_VISIT_ROOM_MOTION_MODES,
+        )
         if self.spin_points < 2:
             raise ValueError("`spin_points` must be >= 2.")
         if self.spin_look_radius <= 0:
@@ -253,6 +262,8 @@ class WalkthroughBehaviorConfig:
             raise ValueError("`passthrough_speed` must be > 0.")
         if self.revisit_arc_angle_search_deg < 0 or self.revisit_arc_angle_search_deg >= 180:
             raise ValueError("`revisit_arc_angle_search_deg` must be in [0, 180).")
+        if self.first_visit_arc_trigger_deg < 0 or self.first_visit_arc_trigger_deg > 180:
+            raise ValueError("`first_visit_arc_trigger_deg` must be in [0, 180].")
         if self.revisit_arc_search_steps < 1:
             raise ValueError("`revisit_arc_search_steps` must be >= 1.")
         if self.revisit_arc_max_tangent_mismatch_deg <= 0 or self.revisit_arc_max_tangent_mismatch_deg >= 180:

@@ -45,6 +45,8 @@ class TrajectoryGenerationConfigTest(unittest.TestCase):
         self.assertEqual(cfg.walkthrough.behavior.neighbor_priority_mode, "human_like")
         self.assertEqual(cfg.walkthrough.behavior.revisit_transition_mode, "center_arc")
         self.assertEqual(cfg.walkthrough.behavior.loop_closure_mode, "auto")
+        self.assertEqual(cfg.walkthrough.behavior.first_visit_room_motion_mode, "full_spin")
+        self.assertEqual(cfg.walkthrough.behavior.first_visit_arc_trigger_deg, 150.0)
         self.assertEqual(cfg.walkthrough.behavior.revisit_arc_angle_search_deg, 30.0)
         self.assertEqual(cfg.walkthrough.behavior.revisit_arc_search_steps, 7)
         self.assertEqual(cfg.walkthrough.behavior.revisit_arc_reverse_pref_deg, 155.0)
@@ -182,6 +184,10 @@ class TrajectoryGenerationConfigTest(unittest.TestCase):
     def test_rejects_invalid_loop_closure_mode(self) -> None:
         with self.assertRaises(ValueError):
             WalkthroughBehaviorConfig(loop_closure_mode="force")
+
+    def test_rejects_invalid_first_visit_room_motion_mode(self) -> None:
+        with self.assertRaises(ValueError):
+            WalkthroughBehaviorConfig(first_visit_room_motion_mode="always_arc")
 
     def test_rejects_missing_dataset_in_from_dict(self) -> None:
         with self.assertRaisesRegex(ValueError, "Missing required top-level field `dataset`"):

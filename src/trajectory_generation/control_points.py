@@ -68,18 +68,14 @@ class ControlPointPlanner:
                 # path to start pose from the returned doorway point.
                 pass
             elif is_first_visit:
-                preferred_departure_angle = self._get_departure_angle(
-                    seq_idx=i,
-                    room_id=room_id,
-                    center_pos=center_pos,
-                    path_sequence=path_sequence,
-                )
-                self._add_spin_points(
+                self._add_first_visit_motion(
+                    i,
+                    room_id,
                     center_pos,
+                    path_sequence,
                     control_points_pos,
                     control_points_look,
                     segment_speeds,
-                    preferred_departure_angle=preferred_departure_angle,
                 )
             else:
                 if self.behavior.revisit_transition_mode == "door_shortcut":
@@ -234,6 +230,92 @@ class ControlPointPlanner:
             segment_speeds=seg_speed_arr,
         )
 
+    def _add_first_visit_motion(
+        self,
+        seq_idx: int,
+        room_id: str,
+        center_pos: np.ndarray,
+        path_sequence: list[str],
+        cp_pos: list,
+        cp_look: list,
+        seg_speeds: list,
+    ) -> None:
+        preferred_departure_angle = self._get_departure_angle(
+            seq_idx=seq_idx,
+            room_id=room_id,
+            center_pos=center_pos,
+            path_sequence=path_sequence,
+        )
+        if self.behavior.first_visit_room_motion_mode == "full_spin":
+            self._add_spin_points(
+                center_pos,
+                cp_pos,
+                cp_look,
+                seg_speeds,
+                preferred_departure_angle=preferred_departure_angle,
+            )
+            return
+
+        transition_target = self._get_transition_target_position(
+            seq_idx=seq_idx,
+            room_id=room_id,
+            center_pos=center_pos,
+            path_sequence=path_sequence,
+        )
+        look_target = self._resolve_first_visit_look_target(
+            center_pos=center_pos,
+            transition_target=transition_target,
+            previous_pos=(np.asarray(cp_pos[-1], dtype=float) if cp_pos else None),
+        )
+
+        if len(cp_pos) == 0:
+            if preferred_departure_angle is not None:
+                self._append_departure_side_start_pose(
+                    center_pos=center_pos,
+                    look_target=look_target,
+                    departure_angle=preferred_departure_angle,
+                    cp_pos=cp_pos,
+                    cp_look=cp_look,
+                )
+            else:
+                cp_pos.append(center_pos.copy())
+                cp_look.append(look_target)
+            return
+
+        if transition_target is None or preferred_departure_angle is None:
+            self._append_center_anchor(center_pos, look_target, cp_pos, cp_look, seg_speeds)
+            return
+
+        incoming_vec = center_pos[:2] - np.asarray(cp_pos[-1][:2], dtype=float)
+        incoming_norm = float(np.linalg.norm(incoming_vec))
+        if incoming_norm <= 1e-6:
+            self._append_center_anchor(center_pos, look_target, cp_pos, cp_look, seg_speeds)
+            return
+
+        incoming_dir = incoming_vec / incoming_norm
+        outgoing_vec = np.asarray(transition_target[:2], dtype=float) - center_pos[:2]
+        outgoing_norm = float(np.linalg.norm(outgoing_vec))
+        if outgoing_norm <= 1e-6:
+            self._append_center_anchor(center_pos, look_target, cp_pos, cp_look, seg_speeds)
+            return
+        outgoing_dir = outgoing_vec / outgoing_norm
+
+        turn_delta = self._signed_angle_between(incoming_dir, outgoing_dir)
+        trigger_rad = float(np.deg2rad(self.behavior.first_visit_arc_trigger_deg))
+        if abs(turn_delta) < trigger_rad:
+            self._append_center_anchor(center_pos, look_target, cp_pos, cp_look, seg_speeds)
+            return
+
+        self._append_tangent_matched_arc(
+            center_pos=center_pos,
+            incoming_dir=incoming_dir,
+            outgoing_dir=outgoing_dir,
+            cp_pos=cp_pos,
+            cp_look=cp_look,
+            seg_speeds=seg_speeds,
+            segment_speed=float(self.behavior.passthrough_speed),
+        )
+
     def _add_spin_points(
         self,
         center_pos: np.ndarray,
@@ -378,6 +460,115 @@ class ControlPointPlanner:
             cp_look.append(look_target)
             if k < len(angles) - 1:
                 seg_speeds.append(self.behavior.passthrough_speed)
+
+    def _append_center_anchor(
+        self,
+        center_pos: np.ndarray,
+        look_target: np.ndarray,
+        cp_pos: list,
+        cp_look: list,
+        seg_speeds: list,
+    ) -> None:
+        if len(cp_pos) > 0:
+            seg_speeds.append(self.behavior.travel_speed)
+        cp_pos.append(center_pos.copy())
+        cp_look.append(np.array(look_target, dtype=float, copy=True))
+
+    def _append_departure_side_start_pose(
+        self,
+        *,
+        center_pos: np.ndarray,
+        look_target: np.ndarray,
+        departure_angle: float,
+        cp_pos: list,
+        cp_look: list,
+    ) -> None:
+        radius = self.behavior.spin_look_radius
+        orbit_scale = self.behavior.spin_orbit_scale
+        look_angle = float(departure_angle - np.pi)
+        dx = radius * np.cos(look_angle)
+        dy = radius * np.sin(look_angle)
+        orbit_offset = np.array([-dx, -dy, 0.0], dtype=float) * orbit_scale
+        cp_pos.append(center_pos + orbit_offset)
+        cp_look.append(np.array(look_target, dtype=float, copy=True))
+
+    def _append_tangent_matched_arc(
+        self,
+        *,
+        center_pos: np.ndarray,
+        incoming_dir: np.ndarray,
+        outgoing_dir: np.ndarray,
+        cp_pos: list,
+        cp_look: list,
+        seg_speeds: list,
+        segment_speed: float,
+    ) -> None:
+        turn_delta = self._signed_angle_between(incoming_dir, outgoing_dir)
+        sign = 1.0 if turn_delta >= 0.0 else -1.0
+        entry_angle = self._tangent_to_orbit_angle(incoming_dir, sign)
+        exit_angle = self._tangent_to_orbit_angle(outgoing_dir, sign)
+        delta = float((exit_angle - entry_angle + np.pi) % (2.0 * np.pi) - np.pi)
+        if sign > 0.0 and delta < 0.0:
+            exit_angle += 2.0 * np.pi
+        elif sign < 0.0 and delta > 0.0:
+            exit_angle -= 2.0 * np.pi
+        self._append_orbit_arc(
+            center_pos=center_pos,
+            entry_angle=entry_angle,
+            exit_angle=exit_angle,
+            cp_pos=cp_pos,
+            cp_look=cp_look,
+            seg_speeds=seg_speeds,
+            segment_speed=segment_speed,
+        )
+
+    def _append_orbit_arc(
+        self,
+        *,
+        center_pos: np.ndarray,
+        entry_angle: float,
+        exit_angle: float,
+        cp_pos: list,
+        cp_look: list,
+        seg_speeds: list,
+        segment_speed: float,
+    ) -> None:
+        radius = self.behavior.spin_look_radius
+        orbit_scale = self.behavior.spin_orbit_scale
+        delta = float((exit_angle - entry_angle + np.pi) % (2 * np.pi) - np.pi)
+        abs_delta = abs(delta)
+        if abs_delta <= 1e-6:
+            return
+
+        num_arc_points = max(3, int(np.ceil(abs_delta / (2 * np.pi) * self.behavior.spin_points)))
+        angles = np.linspace(entry_angle, entry_angle + delta, num_arc_points + 1)
+
+        first_angle = float(angles[0])
+        dx0 = radius * np.cos(first_angle)
+        dy0 = radius * np.sin(first_angle)
+        first_cam_pos = center_pos + np.array([-dx0, -dy0, 0.0], dtype=float) * orbit_scale
+
+        if len(cp_pos) > 0:
+            last_pos = np.asarray(cp_pos[-1], dtype=float)
+            dist_to_arc = float(np.linalg.norm(first_cam_pos - last_pos))
+            if dist_to_arc > 0.1:
+                cp_pos.append((last_pos + first_cam_pos) / 2.0)
+                cp_look.append(center_pos.copy())
+                seg_speeds.append(self.behavior.travel_speed)
+                seg_speeds.append(self.behavior.travel_speed)
+            else:
+                seg_speeds.append(self.behavior.travel_speed)
+
+        for k, angle in enumerate(angles):
+            dx = radius * np.cos(angle)
+            dy = radius * np.sin(angle)
+            look_target = center_pos + np.array([dx, dy, 0.0], dtype=float)
+            orbit_offset = np.array([-dx, -dy, 0.0], dtype=float) * orbit_scale
+            cam_pos = center_pos + orbit_offset
+            cp_pos.append(cam_pos)
+            cp_look.append(look_target)
+            if k < len(angles) - 1:
+                seg_speeds.append(segment_speed)
 
     def _add_door_crossing(
         self,
@@ -610,6 +801,54 @@ class ControlPointPlanner:
         if np.linalg.norm(vec) <= 1e-6:
             return None
         return float(np.arctan2(vec[1], vec[0]))
+
+    def _get_transition_target_position(
+        self,
+        seq_idx: int,
+        room_id: str,
+        center_pos: np.ndarray,
+        path_sequence: list[str],
+    ) -> Optional[np.ndarray]:
+        del center_pos
+        if seq_idx >= len(path_sequence) - 1:
+            return None
+        next_room_id = path_sequence[seq_idx + 1]
+        if next_room_id == room_id:
+            return None
+
+        conn = self._get_connection(room_id, next_room_id)
+        if conn is not None:
+            door_xy = conn.waypoint.position
+            return np.array([door_xy[0], door_xy[1], self.eye_level], dtype=float)
+
+        return np.array(self._get_room_center(next_room_id), dtype=float, copy=True)
+
+    def _resolve_first_visit_look_target(
+        self,
+        *,
+        center_pos: np.ndarray,
+        transition_target: Optional[np.ndarray],
+        previous_pos: Optional[np.ndarray],
+    ) -> np.ndarray:
+        if transition_target is not None:
+            return np.array(transition_target, dtype=float, copy=True)
+
+        if previous_pos is not None:
+            forward = center_pos - previous_pos
+            forward[2] = 0.0
+            norm = float(np.linalg.norm(forward))
+            if norm > 1e-6:
+                return center_pos + (forward / norm) * max(self.behavior.spin_look_radius, 1.0)
+
+        return center_pos + np.array([max(self.behavior.spin_look_radius, 1.0), 0.0, 0.0], dtype=float)
+
+    @staticmethod
+    def _signed_angle_between(a: np.ndarray, b: np.ndarray) -> float:
+        return float(np.arctan2((a[0] * b[1]) - (a[1] * b[0]), np.dot(a, b)))
+
+    @staticmethod
+    def _tangent_to_orbit_angle(direction: np.ndarray, sign: float) -> float:
+        return float(np.arctan2(sign * direction[0], -sign * direction[1]))
 
     def _choose_spin_direction(
         self,

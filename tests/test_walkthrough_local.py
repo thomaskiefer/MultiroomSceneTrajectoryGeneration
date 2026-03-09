@@ -564,6 +564,62 @@ class LocalWalkthroughLogicTest(unittest.TestCase):
         self.assertGreater(float(first_spin[1] - center_b[1]), 0.0)
         self.assertGreater(float(last_spin[1] - center_b[1]), 0.0)
 
+    def test_first_visit_turn_arc_starts_on_departure_side_orbit_and_looks_to_departure(self) -> None:
+        rooms = {
+            "a": (_Room("entryway", np.array([0.0, 0.0, 0.0])), _Poly(10.0, x=0.0, y=0.0)),
+            "b": (_Room("living_room", np.array([4.0, 0.0, 0.0])), _Poly(14.0, x=4.0, y=0.0)),
+        }
+        adjacency = {"a": ["b"], "b": ["a"]}
+        conn = _Connection("a", "b", _Waypoint(position=np.array([2.0, 0.0]), normal=np.array([1.0, 0.0])))
+        behavior = WalkthroughBehaviorConfig(
+            first_visit_room_motion_mode="turn_arc",
+            first_visit_arc_trigger_deg=150.0,
+            spin_orbit_scale=0.10,
+        )
+        walker = LocalWalkthroughGenerator(
+            _Graph(rooms, adjacency=adjacency, connections=[conn]),
+            floor_z=0.0,
+            behavior=behavior,
+        )
+
+        seq = walker._generate_control_points(["a", "b"], "bridge")
+        center_a = walker._get_room_center("a")
+        orbit_radius = behavior.spin_look_radius * behavior.spin_orbit_scale
+
+        self.assertAlmostEqual(float(np.linalg.norm(seq.positions[0][:2] - center_a[:2])), orbit_radius, places=6)
+        self.assertGreater(float(seq.look_targets[0][0] - center_a[0]), 0.0)
+
+    def test_first_visit_turn_arc_uses_partial_orbit_only_for_hard_turns(self) -> None:
+        rooms = {
+            "a": (_Room("entryway", np.array([0.0, 0.0, 0.0])), _Poly(10.0, x=0.0, y=0.0)),
+            "b": (_Room("living_room", np.array([4.0, 0.0, 0.0])), _Poly(14.0, x=4.0, y=0.0)),
+            "c": (_Room("kitchen", np.array([0.0, 0.0, 0.0])), _Poly(12.0, x=0.0, y=0.0)),
+        }
+        adjacency = {"a": ["b"], "b": ["a", "c"], "c": ["b"]}
+        conn_ab = _Connection("a", "b", _Waypoint(position=np.array([2.0, 0.0]), normal=np.array([1.0, 0.0])))
+        conn_bc = _Connection("b", "c", _Waypoint(position=np.array([2.0, 0.0]), normal=np.array([-1.0, 0.0])))
+        graph = _Graph(rooms, adjacency=adjacency, connections=[conn_ab, conn_bc])
+
+        behavior = WalkthroughBehaviorConfig(
+            first_visit_room_motion_mode="turn_arc",
+            first_visit_arc_trigger_deg=150.0,
+            spin_points=8,
+            spin_orbit_scale=0.10,
+        )
+        walker = LocalWalkthroughGenerator(graph, floor_z=0.0, behavior=behavior)
+        seq = walker._generate_control_points(["a", "b", "c"], "bridge")
+
+        center_b = walker._get_room_center("b")
+        orbit_radius = behavior.spin_look_radius * behavior.spin_orbit_scale
+        radial_matches = [
+            idx for idx, pos in enumerate(seq.positions)
+            if abs(float(np.linalg.norm(np.asarray(pos[:2]) - center_b[:2])) - orbit_radius) < 1e-5
+        ]
+
+        self.assertGreater(len(radial_matches), 1)
+        self.assertLess(len(radial_matches), behavior.spin_points + 1)
+
+
     def test_passthrough_arc_produces_multiple_frames(self) -> None:
         """Revisiting a room should produce an arc with multiple control points, not a single cut."""
         rooms = {
@@ -730,6 +786,7 @@ class LocalWalkthroughLogicTest(unittest.TestCase):
         self.assertTrue(np.allclose(closed.positions[0], closed.positions[-1], atol=0.0))
         self.assertTrue(np.allclose(closed.look_targets[0], closed.look_targets[-1], atol=0.0))
         self.assertEqual(len(closed.segment_speeds), len(closed.positions) - 1)
+
 
     def test_loop_closure_adds_terminal_pose(self) -> None:
         rooms = {
